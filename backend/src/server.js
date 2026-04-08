@@ -9,6 +9,7 @@ const pdfParse = require('pdf-parse');
 const multer = require('multer');
 const XLSX = require('xlsx');
 const { XMLParser } = require('fast-xml-parser');
+const path = require('path');
 require('dotenv').config();
 
 const { readDb, writeDb } = require('./db');
@@ -16,6 +17,7 @@ const { authMiddleware } = require('./auth');
 
 const app = express();
 const upload = multer({ storage: multer.memoryStorage() });
+const projectRoot = path.join(__dirname, '..', '..');
 const PORT = Number(process.env.PORT) || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret';
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '8h';
@@ -25,6 +27,15 @@ app.use(helmet());
 app.use(cors({ origin: CORS_ORIGIN === '*' ? true : CORS_ORIGIN }));
 app.use(express.json({ limit: '2mb' }));
 app.use(morgan('dev'));
+app.use(express.static(projectRoot));
+
+app.get('/', (_req, res) => {
+  res.sendFile(path.join(projectRoot, 'index.html'));
+});
+
+app.get('/favicon.ico', (_req, res) => {
+  res.status(204).end();
+});
 
 function normalizeEmail(email) {
   return String(email || '').trim().toLowerCase();
@@ -494,7 +505,7 @@ app.get('/api/products/export/pdf', authMiddleware, async (req, res) => {
 });
 
 app.use((req, res) => {
-  res.status(404).json({ error: `Rota não encontrada: ${req.method} ${req.path}` });
+  res.status(404).json({ error: `Rota nao encontrada: ${req.method} ${req.originalUrl || req.url}` });
 });
 
 async function start() {
