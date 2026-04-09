@@ -24,6 +24,8 @@ body {
     color: var(--text-dark);
     min-height: 100vh;
     padding: 20px;
+    -webkit-text-size-adjust: 100%;
+    overflow-x: hidden;
 }
 
 .app-hidden {
@@ -511,6 +513,7 @@ textarea {
     border-radius: 6px;
     font-size: 1em;
     transition: border-color 0.3s, box-shadow 0.3s;
+    min-height: 44px;
 }
 
 input[type="text"]:focus,
@@ -539,6 +542,7 @@ textarea {
     cursor: pointer;
     transition: all 0.3s;
     display: inline-block;
+    min-height: 44px;
 }
 
 .btn-primary {
@@ -879,6 +883,10 @@ footer {
         padding: 14px;
     }
 
+    .container {
+        border-radius: 10px;
+    }
+
     .auth-shell {
         min-height: calc(100vh - 28px);
     }
@@ -909,6 +917,7 @@ footer {
 
     .modal-content {
         width: 95%;
+        padding: 22px;
     }
 
     .stat-card {
@@ -953,9 +962,22 @@ footer {
     .product-actions button {
         width: 100%;
     }
+
+    .dashboard-toolbar select {
+        min-width: 0;
+        width: 100%;
+    }
 }
 
 @media (max-width: 480px) {
+    body {
+        padding: 10px;
+    }
+
+    .container {
+        border-radius: 8px;
+    }
+
     .auth-brand h1 {
         font-size: 1.4em;
     }
@@ -992,6 +1014,32 @@ footer {
 
     .view-tab {
         width: 100%;
+    }
+
+    .session-info {
+        display: grid;
+        grid-template-columns: 1fr;
+    }
+
+    #loggedUserText,
+    .session-info .btn {
+        width: 100%;
+    }
+
+    .api-status {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .product-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+
+    .category-meta {
+        flex-direction: column;
+        gap: 4px;
     }
 }
 

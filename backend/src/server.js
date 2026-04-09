@@ -19,6 +19,7 @@ const app = express();
 const upload = multer({ storage: multer.memoryStorage() });
 const projectRoot = path.join(__dirname, '..', '..');
 const PORT = Number(process.env.PORT) || 3000;
+const HOST = process.env.HOST || '0.0.0.0';
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret';
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '8h';
 const CORS_ORIGIN = process.env.CORS_ORIGIN || '*';
@@ -522,8 +523,11 @@ app.use((req, res) => {
 async function start() {
   await ensureAdminUser();
 
-  app.listen(PORT, () => {
+  app.listen(PORT, HOST, () => {
     console.log(`Backend rodando em http://localhost:${PORT}`);
+    if (HOST === '0.0.0.0') {
+      console.log(`Acesso na rede local: http://<IP-DA-MAQUINA>:${PORT}`);
+    }
   });
 }
 
