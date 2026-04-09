@@ -4,94 +4,155 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sistema de Controle de Estoque</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
     <div id="authContainer" class="auth-shell">
         <div class="auth-card">
-            <div class="auth-brand">
-                <h1>🔐 Acesso ao Sistema</h1>
-                <p>Faça login para gerenciar seu estoque com segurança</p>
-            </div>
-
-            <div id="apiStatusAuth" class="api-status checking" role="status" aria-live="polite">
-                <span class="api-dot" aria-hidden="true"></span>
-                <span class="api-status-text">Verificando API...</span>
-            </div>
-
-            <div class="auth-tabs">
-                <button id="showLoginTab" class="auth-tab active" type="button">Entrar</button>
-                <button id="showRegisterTab" class="auth-tab" type="button">Cadastrar</button>
-                <button id="showRecoveryTab" class="auth-tab" type="button">Recuperar</button>
-            </div>
-
-            <form id="loginForm" class="auth-form active">
-                <div class="form-group">
-                    <label for="loginEmail">E-mail</label>
-                    <input type="email" id="loginEmail" placeholder="exemplo@empresa.com" autocomplete="email" required>
-                </div>
-                <div class="form-group">
-                    <label for="loginPassword">Senha</label>
-                    <input type="password" id="loginPassword" placeholder="Digite sua senha" autocomplete="current-password" required>
-                </div>
-                <div class="remember-row">
-                    <label class="checkbox-label" for="rememberSession">
-                        <input type="checkbox" id="rememberSession">
-                        <span>Manter sessão por 24h</span>
-                    </label>
-                </div>
-                <button id="goRecoveryFromLogin" class="auth-link" type="button">Esqueci minha senha</button>
-                <button type="submit" class="btn btn-primary">Entrar no sistema</button>
-            </form>
-
-            <form id="registerForm" class="auth-form">
-                <div class="form-group">
-                    <label for="registerName">Nome</label>
-                    <input type="text" id="registerName" placeholder="Seu nome" required>
-                </div>
-                <div class="form-group">
-                    <label for="registerEmail">E-mail</label>
-                    <input type="email" id="registerEmail" placeholder="exemplo@empresa.com" autocomplete="email" required>
-                </div>
-                <div class="form-group">
-                    <label for="registerPassword">Senha</label>
-                    <input type="password" id="registerPassword" placeholder="Mínimo 8, com maiúscula, número e símbolo" minlength="8" autocomplete="new-password" required>
-                    <div class="password-meter" aria-hidden="true">
-                        <span id="registerStrengthBar"></span>
+            <div class="auth-layout">
+                <aside class="auth-spotlight">
+                    <div class="auth-brand">
+                        <span class="auth-eyebrow">Controle inteligente</span>
+                        <h1>Estoque com acesso rápido, seguro e moderno</h1>
+                        <p>Uma entrada visual mais clara para entrar, cadastrar ou recuperar sua conta sem fricção.</p>
                     </div>
-                    <small id="registerStrengthText" class="field-help">Força da senha: -</small>
-                </div>
-                <div class="form-group">
-                    <label for="registerConfirmPassword">Confirmar senha</label>
-                    <input type="password" id="registerConfirmPassword" placeholder="Repita a senha" minlength="8" autocomplete="new-password" required>
-                </div>
-                <button type="submit" class="btn btn-primary">Criar conta</button>
-            </form>
 
-            <form id="recoveryForm" class="auth-form">
-                <div class="form-group">
-                    <label for="recoveryEmail">E-mail cadastrado</label>
-                    <input type="email" id="recoveryEmail" placeholder="exemplo@empresa.com" autocomplete="email" required>
-                </div>
-                <div class="form-group">
-                    <label for="newRecoveryPassword">Nova senha</label>
-                    <input type="password" id="newRecoveryPassword" placeholder="Mínimo 8, com maiúscula, número e símbolo" minlength="8" autocomplete="new-password" required>
-                    <div class="password-meter" aria-hidden="true">
-                        <span id="recoveryStrengthBar"></span>
+                    <div class="auth-highlights">
+                        <div class="auth-highlight-card">
+                            <strong>JWT</strong>
+                            <span>Sessão segura e centralizada</span>
+                        </div>
+                        <div class="auth-highlight-card">
+                            <strong>24h</strong>
+                            <span>Opção de sessão estendida</span>
+                        </div>
+                        <div class="auth-highlight-card">
+                            <strong>API</strong>
+                            <span>Validação em tempo real</span>
+                        </div>
                     </div>
-                    <small id="recoveryStrengthText" class="field-help">Força da senha: -</small>
-                </div>
-                <div class="form-group">
-                    <label for="confirmRecoveryPassword">Confirmar nova senha</label>
-                    <input type="password" id="confirmRecoveryPassword" placeholder="Repita a nova senha" minlength="8" autocomplete="new-password" required>
-                </div>
-                <button type="submit" class="btn btn-primary">Redefinir senha</button>
-                <button id="backToLoginFromRecovery" class="auth-link" type="button">Voltar para login</button>
-            </form>
 
-            <p id="authFeedback" class="auth-feedback info" role="status" aria-live="polite">Use credenciais válidas para acessar.</p>
-            <p class="auth-hint">Usuário padrão para teste: admin@estoque.com / admin123</p>
+                    <ul class="auth-points">
+                        <li>Fluxo enxuto para login, cadastro e recuperação.</li>
+                        <li>Campos com foco claro e feedback imediato.</li>
+                        <li>Visual adaptado para desktop e mobile.</li>
+                    </ul>
+                </aside>
+
+                <section class="auth-panel">
+                    <div id="apiStatusAuth" class="api-status checking" role="status" aria-live="polite">
+                        <span class="api-dot" aria-hidden="true"></span>
+                        <span class="api-status-text">Verificando API...</span>
+                    </div>
+
+                    <div class="auth-tabs">
+                        <button id="showLoginTab" class="auth-tab active" type="button">Entrar</button>
+                        <button id="showRegisterTab" class="auth-tab" type="button">Cadastrar</button>
+                        <button id="showRecoveryTab" class="auth-tab" type="button">Recuperar</button>
+                    </div>
+
+                    <form id="loginForm" class="auth-form active">
+                        <div class="form-group">
+                            <label for="loginEmail">E-mail</label>
+                            <div class="auth-input-shell">
+                                <span class="auth-field-icon" aria-hidden="true">✉</span>
+                                <input type="email" id="loginEmail" placeholder="exemplo@empresa.com" autocomplete="email" required>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="loginPassword">Senha</label>
+                            <div class="password-field">
+                                <span class="auth-field-icon" aria-hidden="true">🔒</span>
+                                <input type="password" id="loginPassword" placeholder="Digite sua senha" autocomplete="current-password" required>
+                                <button id="toggleLoginPassword" class="password-toggle" type="button" aria-label="Mostrar senha">Mostrar</button>
+                            </div>
+                        </div>
+                        <div class="remember-row">
+                            <label class="checkbox-label" for="rememberSession">
+                                <input type="checkbox" id="rememberSession">
+                                <span>Manter sessão por 24h</span>
+                            </label>
+                        </div>
+                        <button id="goRecoveryFromLogin" class="auth-link" type="button">Esqueci minha senha</button>
+                        <button type="submit" class="btn btn-primary">Entrar no sistema</button>
+                    </form>
+
+                    <form id="registerForm" class="auth-form">
+                        <div class="form-group">
+                            <label for="registerName">Nome</label>
+                            <div class="auth-input-shell">
+                                <span class="auth-field-icon" aria-hidden="true">👤</span>
+                                <input type="text" id="registerName" placeholder="Seu nome" required>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="registerEmail">E-mail</label>
+                            <div class="auth-input-shell">
+                                <span class="auth-field-icon" aria-hidden="true">✉</span>
+                                <input type="email" id="registerEmail" placeholder="exemplo@empresa.com" autocomplete="email" required>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="registerPassword">Senha</label>
+                            <div class="password-field">
+                                <span class="auth-field-icon" aria-hidden="true">🔒</span>
+                                <input type="password" id="registerPassword" placeholder="Mínimo 8, com maiúscula, número e símbolo" minlength="8" autocomplete="new-password" required>
+                                <button id="toggleRegisterPassword" class="password-toggle" type="button" aria-label="Mostrar senha">Mostrar</button>
+                            </div>
+                            <div class="password-meter" aria-hidden="true">
+                                <span id="registerStrengthBar"></span>
+                            </div>
+                            <small id="registerStrengthText" class="field-help">Força da senha: -</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="registerConfirmPassword">Confirmar senha</label>
+                            <div class="auth-input-shell auth-confirm-shell">
+                                <span class="auth-field-icon" aria-hidden="true">🔐</span>
+                                <input type="password" id="registerConfirmPassword" placeholder="Repita a senha" minlength="8" autocomplete="new-password" required>
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Criar conta</button>
+                    </form>
+
+                    <form id="recoveryForm" class="auth-form">
+                        <div class="form-group">
+                            <label for="recoveryEmail">E-mail cadastrado</label>
+                            <div class="auth-input-shell">
+                                <span class="auth-field-icon" aria-hidden="true">✉</span>
+                                <input type="email" id="recoveryEmail" placeholder="exemplo@empresa.com" autocomplete="email" required>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="newRecoveryPassword">Nova senha</label>
+                            <div class="password-field">
+                                <span class="auth-field-icon" aria-hidden="true">🔒</span>
+                                <input type="password" id="newRecoveryPassword" placeholder="Mínimo 8, com maiúscula, número e símbolo" minlength="8" autocomplete="new-password" required>
+                                <button id="toggleRecoveryPassword" class="password-toggle" type="button" aria-label="Mostrar senha">Mostrar</button>
+                            </div>
+                            <div class="password-meter" aria-hidden="true">
+                                <span id="recoveryStrengthBar"></span>
+                            </div>
+                            <small id="recoveryStrengthText" class="field-help">Força da senha: -</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="confirmRecoveryPassword">Confirmar nova senha</label>
+                            <div class="auth-input-shell auth-confirm-shell">
+                                <span class="auth-field-icon" aria-hidden="true">🔐</span>
+                                <input type="password" id="confirmRecoveryPassword" placeholder="Repita a nova senha" minlength="8" autocomplete="new-password" required>
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Redefinir senha</button>
+                        <button id="backToLoginFromRecovery" class="auth-link" type="button">Voltar para login</button>
+                    </form>
+
+                    <p id="authFeedback" class="auth-feedback info" role="status" aria-live="polite">Use credenciais válidas para acessar.</p>
+                    <p class="auth-hint">Usuário padrão para teste: admin@estoque.com / admin123</p>
+                </section>
+            </div>
         </div>
     </div>
 

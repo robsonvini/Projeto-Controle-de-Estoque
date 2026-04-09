@@ -1000,6 +1000,9 @@ class AuthManager {
         const logoutBtn = document.getElementById('logoutBtn');
         const goRecoveryFromLogin = document.getElementById('goRecoveryFromLogin');
         const backToLoginFromRecovery = document.getElementById('backToLoginFromRecovery');
+        const toggleLoginPassword = document.getElementById('toggleLoginPassword');
+        const toggleRegisterPassword = document.getElementById('toggleRegisterPassword');
+        const toggleRecoveryPassword = document.getElementById('toggleRecoveryPassword');
 
         loginTabBtn.addEventListener('click', () => this.mudarAba('login'));
         registerTabBtn.addEventListener('click', () => this.mudarAba('register'));
@@ -1030,9 +1033,31 @@ class AuthManager {
             this.setAuthFeedback('Informe suas credenciais para entrar.', 'info');
         });
 
+        toggleLoginPassword?.addEventListener('click', () => {
+            this.togglePasswordVisibility('loginPassword', toggleLoginPassword);
+        });
+
+        toggleRegisterPassword?.addEventListener('click', () => {
+            this.togglePasswordVisibility('registerPassword', toggleRegisterPassword);
+        });
+
+        toggleRecoveryPassword?.addEventListener('click', () => {
+            this.togglePasswordVisibility('newRecoveryPassword', toggleRecoveryPassword);
+        });
+
         logoutBtn.addEventListener('click', () => {
             this.logout('Sessao encerrada com sucesso.');
         });
+    }
+
+    togglePasswordVisibility(inputId, button) {
+        const input = document.getElementById(inputId);
+        if (!input || !button) return;
+
+        const isPassword = input.type === 'password';
+        input.type = isPassword ? 'text' : 'password';
+        button.textContent = isPassword ? 'Ocultar' : 'Mostrar';
+        button.setAttribute('aria-label', isPassword ? 'Ocultar senha' : 'Mostrar senha');
     }
 
     bindPasswordMeters() {
