@@ -722,11 +722,83 @@ header .subtitle {
     min-width: 220px;
 }
 
+.dashboard-toolbar .btn {
+    margin: 0;
+    min-height: 40px;
+}
+
 .dashboard-summary {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 16px;
     margin-bottom: 20px;
+}
+
+.kpi-report {
+    margin-bottom: 20px;
+    background: white;
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    padding: 18px;
+    box-shadow: var(--shadow);
+}
+
+.kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+}
+
+.kpi-card {
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 14px;
+    display: grid;
+    gap: 8px;
+    background: #f8fafc;
+}
+
+.kpi-title {
+    color: #475569;
+    font-weight: 700;
+    font-size: 0.9rem;
+}
+
+.kpi-value {
+    color: #0f172a;
+    font-size: 1.5rem;
+    line-height: 1;
+}
+
+.kpi-subtitle {
+    color: #64748b;
+    font-size: 0.85rem;
+    min-height: 34px;
+}
+
+.kpi-track {
+    height: 8px;
+    background: #e2e8f0;
+    border-radius: 999px;
+    overflow: hidden;
+}
+
+.kpi-fill {
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, #6366f1, #22c55e);
+}
+
+.kpi-card.tone-risk .kpi-fill {
+    background: linear-gradient(90deg, #f59e0b, #ef4444);
+}
+
+.kpi-card.tone-good .kpi-fill {
+    background: linear-gradient(90deg, #22c55e, #16a34a);
+}
+
+.kpi-card.tone-focus .kpi-fill {
+    background: linear-gradient(90deg, #3b82f6, #1d4ed8);
 }
 
 .dashboard-card {
@@ -986,6 +1058,27 @@ textarea {
 /* Filtros */
 .filters-section {
     margin-bottom: 30px;
+}
+
+.inventory-alert {
+    margin: -10px 0 22px;
+    padding: 14px 16px;
+    border-radius: 12px;
+    border: 1px solid #fcd34d;
+    background: #fffbeb;
+    color: #92400e;
+    display: grid;
+    gap: 8px;
+}
+
+.inventory-alert-meta {
+    font-size: 0.92rem;
+    color: #b45309;
+}
+
+.inventory-alert-actions {
+    display: flex;
+    justify-content: flex-end;
 }
 
 .controls {
@@ -1335,6 +1428,10 @@ footer {
         grid-template-columns: 1fr;
     }
 
+    .kpi-grid {
+        grid-template-columns: 1fr;
+    }
+
     .chart-card {
         min-height: 320px;
     }
@@ -1371,6 +1468,10 @@ footer {
 
     .dashboard-toolbar select {
         min-width: 0;
+        width: 100%;
+    }
+
+    .dashboard-toolbar .btn {
         width: 100%;
     }
 

@@ -1,10 +1,11 @@
 # Sistema Web de Controle de Estoque
 
-Aplicacao web de controle de estoque com autenticacao, CRUD de produtos e importacao/exportacao de dados, agora operando em modo API-first.
+Aplicacao web de controle de estoque com autenticacao, CRUD de produtos e importacao/exportacao de dados, agora com front-end em React carregado no navegador e backend API-first.
 
 ## Arquitetura
 
-- Front-end: HTML, CSS e JavaScript em [index.html](index.html), [style.css](style.css), [script.js](script.js)
+- Front-end: React via CDN+Babel em [index.html](index.html) e [app.jsx](app.jsx)
+- Estilos: [style.css](style.css)
 - Back-end: Node.js + Express em [backend/src/server.js](backend/src/server.js)
 - Persistencia: arquivo JSON local em [backend/data/db.json](backend/data/db.json)
 
@@ -40,9 +41,9 @@ npm install
 npm run dev
 ```
 
-4. Abra o front-end no navegador:
-- Opcao simples: abra [index.html](index.html)
-- Opcao recomendada: use Live Server
+4. Abra a interface no navegador:
+- Opcao simples: acesse [http://localhost:3000](http://localhost:3000)
+- A aplicacao carrega React diretamente no navegador, sem build separado
 
 5. Acesse com o usuario padrao:
 - Email: `admin@estoque.com`
@@ -81,8 +82,8 @@ Importacao/exportacao:
 ```text
 Projeto Controle de Estoque/
 |-- index.html
+|-- app.jsx
 |-- style.css
-|-- script.js
 |-- README.md
 `-- backend/
     |-- .env.example
