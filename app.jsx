@@ -2,7 +2,7 @@ const { useEffect, useMemo, useRef, useState } = React;
 
 const PRODUCT_CATEGORIES = ['Eletrônicos', 'Alimentos', 'Roupas', 'Higiene', 'Outros'];
 const PRODUCT_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#14b8a6'];
-const MIN_STOCK_THRESHOLD = 10;
+const MIN_STOCK_THRESHOLD = 2;
 const SESSION_KEY = 'estoqueSession';
 const SESSION_30_MIN = 30 * 60 * 1000;
 const SESSION_24_HOURS = 24 * 60 * 60 * 1000;

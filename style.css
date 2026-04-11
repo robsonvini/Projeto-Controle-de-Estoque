@@ -1055,6 +1055,15 @@ textarea {
     background: #dc2626;
 }
 
+.btn-info {
+    background: #33a111;
+    color: #ffffff;
+}
+
+.btn-info:hover {
+    background: #399b36;
+}
+
 /* Filtros */
 .filters-section {
     margin-bottom: 30px;
@@ -1095,22 +1104,28 @@ textarea {
 .stats-section {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 15px;
+    gap: 16px;
     margin-bottom: 30px;
+    align-items: stretch;
 }
 
 .stat-card {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: white;
-    padding: 20px;
-    border-radius: 8px;
+    padding: 22px;
+    border-radius: 14px;
     text-align: center;
-    box-shadow: var(--shadow);
-    transition: transform 0.3s;
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.16);
+    transition: transform 0.25s ease, box-shadow 0.25s ease;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    min-height: 132px;
+    display: grid;
+    align-content: center;
 }
 
 .stat-card:hover {
-    transform: translateY(-5px);
+    transform: translateY(-4px);
+    box-shadow: 0 16px 30px rgba(15, 23, 42, 0.2);
 }
 
 .stat-card h3 {
@@ -1132,22 +1147,26 @@ textarea {
 .products-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 20px;
+    gap: 18px;
+    align-items: stretch;
 }
 
 .product-card {
     background: white;
     border: 1px solid var(--border-color);
-    border-radius: 8px;
-    padding: 20px;
-    box-shadow: var(--shadow);
-    transition: all 0.3s;
+    border-radius: 14px;
+    padding: 18px;
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+    transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
     cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
 }
 
 .product-card:hover {
-    transform: translateY(-5px);
-    box-shadow: var(--shadow-lg);
+    transform: translateY(-4px);
+    box-shadow: 0 16px 34px rgba(15, 23, 42, 0.14);
     border-color: var(--primary-color);
 }
 
@@ -1158,7 +1177,8 @@ textarea {
 .product-header {
     display: flex;
     justify-content: space-between;
-    align-items: start;
+    align-items: flex-start;
+    gap: 10px;
     margin-bottom: 12px;
 }
 
@@ -1167,6 +1187,7 @@ textarea {
     font-weight: 700;
     color: var(--text-dark);
     flex: 1;
+    line-height: 1.25;
 }
 
 .product-category {
@@ -1187,8 +1208,9 @@ textarea {
 .product-description {
     color: var(--text-light);
     font-size: 0.9em;
-    margin-bottom: 12px;
+    margin-bottom: 14px;
     line-height: 1.4;
+    min-height: 38px;
 }
 
 .product-info {
@@ -1201,7 +1223,8 @@ textarea {
 .info-item {
     background: var(--light-bg);
     padding: 10px;
-    border-radius: 6px;
+    border-radius: 10px;
+    border: 1px solid rgba(226, 232, 240, 0.9);
 }
 
 .info-label {
@@ -1233,9 +1256,9 @@ textarea {
 .product-actions {
     display: flex;
     gap: 8px;
-    margin-top: 15px;
+    margin-top: auto;
     border-top: 1px solid var(--border-color);
-    padding-top: 15px;
+    padding-top: 14px;
 }
 
 .product-actions button {
