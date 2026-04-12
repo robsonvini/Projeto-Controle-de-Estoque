@@ -49,6 +49,22 @@ npm run dev
 - Email: `admin@estoque.com`
 - Senha: `admin123`
 
+## Executar sem abrir o VS Code
+
+No Windows, voce pode iniciar o projeto com um clique usando o arquivo [iniciar-localhost.bat](iniciar-localhost.bat).
+
+Esse atalho:
+- sobe o backend na porta 3000
+- abre automaticamente o navegador em `http://localhost:3000`
+- funciona fora do VS Code, desde que o Node.js e as dependencias do backend estejam instalados
+
+Se ainda nao tiver instalado as dependencias, rode uma vez:
+
+```bash
+cd backend
+npm.cmd install
+```
+
 ## API principal
 
 Base URL: `http://localhost:3000/api`
