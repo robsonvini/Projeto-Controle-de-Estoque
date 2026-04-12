@@ -54,7 +54,7 @@ npm run dev
 No Windows, voce pode iniciar o projeto com um clique usando o arquivo [iniciar-localhost.bat](iniciar-localhost.bat).
 
 Esse atalho:
-- sobe o backend na porta 3000
+- sobe o backend na porta 3000 com PM2
 - abre automaticamente o navegador em `http://localhost:3000`
 - funciona fora do VS Code, desde que o Node.js e as dependencias do backend estejam instalados
 
@@ -64,6 +64,26 @@ Se ainda nao tiver instalado as dependencias, rode uma vez:
 cd backend
 npm.cmd install
 ```
+
+## Controle do backend com PM2
+
+Os comandos abaixo devem ser executados na pasta `backend`:
+
+```bash
+npm.cmd run pm2:start
+npm.cmd run pm2:status
+npm.cmd run pm2:logs
+npm.cmd run pm2:restart
+npm.cmd run pm2:stop
+npm.cmd run pm2:delete
+```
+
+- `pm2:start`: inicia o processo `controle-estoque-api`
+- `pm2:status`: mostra o status atual
+- `pm2:logs`: acompanha logs em tempo real
+- `pm2:restart`: reinicia o processo
+- `pm2:stop`: para o processo
+- `pm2:delete`: remove o processo da lista do PM2
 
 ## API principal
 

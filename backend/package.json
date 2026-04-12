@@ -6,7 +6,13 @@
   "type": "commonjs",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "node --watch src/server.js"
+    "dev": "node --watch src/server.js",
+    "pm2:start": "pm2 start ecosystem.config.cjs --only controle-estoque-api --update-env",
+    "pm2:restart": "pm2 restart controle-estoque-api --update-env",
+    "pm2:stop": "pm2 stop controle-estoque-api",
+    "pm2:delete": "pm2 delete controle-estoque-api",
+    "pm2:status": "pm2 status controle-estoque-api",
+    "pm2:logs": "pm2 logs controle-estoque-api"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
@@ -22,5 +28,8 @@
     "pdf-parse": "^1.1.1",
     "pdfkit": "^0.15.0",
     "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "pm2": "^5.4.3"
   }
 }
