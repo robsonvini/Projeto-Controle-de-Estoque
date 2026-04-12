@@ -480,6 +480,7 @@ function App() {
     const [registerForm, setRegisterForm] = useState({ name: '', email: '', password: '', confirmPassword: '' });
     const [recoveryForm, setRecoveryForm] = useState({ email: '', newPassword: '', confirmPassword: '' });
     const [dashboardTick, setDashboardTick] = useState(0);
+    const [now, setNow] = useState(() => new Date());
     const [movementForm, setMovementForm] = useState({
         productId: '',
         type: 'entrada',
@@ -598,6 +599,14 @@ function App() {
         sessionCheckerRef.current = timer;
         return () => clearInterval(timer);
     }, [token]);
+
+    useEffect(() => {
+        const timer = setInterval(() => {
+            setNow(new Date());
+        }, 1000);
+
+        return () => clearInterval(timer);
+    }, []);
 
     useEffect(() => {
         const handleOutsideClick = (event) => {
@@ -793,6 +802,10 @@ function App() {
     }, [showApp, lowStockProducts]);
 
     const dashboardData = useMemo(() => computeDashboard(products, dashboardPeriod), [products, dashboardPeriod]);
+    const nowLabel = useMemo(() => new Intl.DateTimeFormat('pt-BR', {
+        dateStyle: 'full',
+        timeStyle: 'medium'
+    }).format(now), [now]);
     const categoryEntries = Object.entries(dashboardData.categorias);
     const totalCategoryQty = categoryEntries.reduce((sum, [, item]) => sum + item.quantidade, 0) || 1;
     const totalCategoryValue = categoryEntries.reduce((sum, [, item]) => sum + item.valor, 0) || 1;
@@ -1485,6 +1498,7 @@ function App() {
                         </div>
                         <div className="session-info">
                             <span id="loggedUserText">{sessionUser ? `${sessionUser.name || sessionUser.email} · ${sessionUser.email}` : ''}</span>
+                            <span className="current-datetime" aria-live="polite">{nowLabel}</span>
                             <button id="logoutBtn" className="btn btn-secondary" type="button" onClick={() => handleLogout('Sessão encerrada com sucesso.')}>Sair</button>
                         </div>
                         <div className="view-tabs">

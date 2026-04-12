@@ -645,6 +645,13 @@ header .subtitle {
     font-weight: 600;
 }
 
+.current-datetime {
+    background: rgba(255, 255, 255, 0.18);
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-weight: 600;
+}
+
 #apiStatusApp {
     margin-bottom: 0;
 }
