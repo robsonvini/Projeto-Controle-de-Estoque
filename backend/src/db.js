@@ -7,7 +7,7 @@ async function ensureDbFile() {
   try {
     await fs.access(DB_PATH);
   } catch {
-    const initial = { users: [], products: [] };
+    const initial = { users: [], products: [], movements: [] };
     await fs.writeFile(DB_PATH, JSON.stringify(initial, null, 2), 'utf8');
   }
 }
@@ -15,7 +15,13 @@ async function ensureDbFile() {
 async function readDb() {
   await ensureDbFile();
   const raw = await fs.readFile(DB_PATH, 'utf8');
-  return JSON.parse(raw);
+  const parsed = JSON.parse(raw);
+
+  if (!Array.isArray(parsed.users)) parsed.users = [];
+  if (!Array.isArray(parsed.products)) parsed.products = [];
+  if (!Array.isArray(parsed.movements)) parsed.movements = [];
+
+  return parsed;
 }
 
 async function writeDb(data) {

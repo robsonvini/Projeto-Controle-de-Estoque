@@ -15,11 +15,11 @@
       "userId": 1775675197663,
       "nome": "Toner Brother 690912DW",
       "categoria": "Eletrônicos",
-      "quantidade": 4,
+      "quantidade": 8,
       "preco": 150,
       "descricao": "",
       "dataCriacao": "08/04/2026",
-      "dataAtualizacao": "08/04/2026"
+      "dataAtualizacao": "11/04/2026"
     },
     {
       "id": 1775678229707,
@@ -42,6 +42,44 @@
       "descricao": "",
       "dataCriacao": "08/04/2026",
       "dataAtualizacao": "11/04/2026"
+    }
+  ],
+  "movements": [
+    {
+      "id": 1775959114343,
+      "userId": 1775675197663,
+      "productId": 1775676352787,
+      "productName": "Toner Brother 690912DW",
+      "type": "entrada",
+      "quantity": 4,
+      "reason": "Disponibiliade de outro setor",
+      "previousStock": 4,
+      "newStock": 8,
+      "createdAt": "2026-04-12T01:58:34.130Z"
+    },
+    {
+      "id": 1775958556399,
+      "userId": 1775675197663,
+      "productId": 1775958555725,
+      "productName": "Produto Teste Mov",
+      "type": "saida",
+      "quantity": 2,
+      "reason": "venda teste",
+      "previousStock": 8,
+      "newStock": 6,
+      "createdAt": "2026-04-12T01:49:15.858Z"
+    },
+    {
+      "id": 1775958556686,
+      "userId": 1775675197663,
+      "productId": 1775958555725,
+      "productName": "Produto Teste Mov",
+      "type": "entrada",
+      "quantity": 3,
+      "reason": "compra de reposicao",
+      "previousStock": 5,
+      "newStock": 8,
+      "createdAt": "2026-04-12T01:49:15.773Z"
     }
   ]
 }

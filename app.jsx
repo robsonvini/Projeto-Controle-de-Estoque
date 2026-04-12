@@ -128,6 +128,24 @@ class ApiClient {
             headers: {}
         }, true);
     }
+    getMovements(filters = {}) {
+        const params = new URLSearchParams();
+
+        if (filters.productId) params.set('productId', String(filters.productId));
+        if (filters.type) params.set('type', String(filters.type));
+        if (filters.from) params.set('from', String(filters.from));
+        if (filters.to) params.set('to', String(filters.to));
+
+        const query = params.toString();
+        return this.request(`/movements${query ? `?${query}` : ''}`, { method: 'GET' }, true);
+    }
+
+    createMovement(productId, payload) {
+        return this.request(`/products/${productId}/movements`, {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        }, true);
+    }
 
     async download(path, filename) {
         if (!this.token) {
@@ -221,6 +239,17 @@ function getPasswordStrength(password) {
 function filterByPeriod(products, period) {
     const days = getPeriodDays(period);
     if (!days) return products;
+
+    if (days === 1) {
+        const startOfToday = new Date();
+        startOfToday.setHours(0, 0, 0, 0);
+        const startTimestamp = startOfToday.getTime();
+
+        return products.filter((product) => {
+            const date = parseDate(product.dataAtualizacao || product.dataCriacao || product.updatedAt || product.createdAt);
+            return date && date.getTime() >= startTimestamp;
+        });
+    }
 
     const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
     return products.filter((product) => {
@@ -419,7 +448,9 @@ function App() {
     });
     const [token, setToken] = useState(() => api.token);
     const [products, setProducts] = useState([]);
+    const [movements, setMovements] = useState([]);
     const [loadingProducts, setLoadingProducts] = useState(false);
+    const [loadingMovements, setLoadingMovements] = useState(false);
     const [exportingKpiPdf, setExportingKpiPdf] = useState(false);
     const [activeView, setActiveView] = useState('inventory');
     const [dashboardPeriod, setDashboardPeriod] = useState('all');
@@ -449,6 +480,13 @@ function App() {
     const [registerForm, setRegisterForm] = useState({ name: '', email: '', password: '', confirmPassword: '' });
     const [recoveryForm, setRecoveryForm] = useState({ email: '', newPassword: '', confirmPassword: '' });
     const [dashboardTick, setDashboardTick] = useState(0);
+    const [movementForm, setMovementForm] = useState({
+        productId: '',
+        type: 'entrada',
+        quantity: 1,
+        reason: ''
+    });
+    const [movementFilter, setMovementFilter] = useState({ productId: '', type: '', period: 'all', order: 'recent' });
 
     const showApp = Boolean(token && session && session.expiraEm && Date.now() < session.expiraEm);
 
@@ -521,6 +559,28 @@ function App() {
     }, [bootstrapped, token, dashboardTick]);
 
     useEffect(() => {
+        if (!bootstrapped || !token) return undefined;
+
+        const loadMovements = async () => {
+            try {
+                setLoadingMovements(true);
+                const list = await api.getMovements();
+                setMovements(list);
+            } catch (error) {
+                if (error.status === 401) {
+                    handleLogout('Sessão expirada. Entre novamente.');
+                    return;
+                }
+                pushNotice(error.message || 'Erro ao carregar movimentações.', 'error');
+            } finally {
+                setLoadingMovements(false);
+            }
+        };
+
+        loadMovements();
+    }, [bootstrapped, token]);
+
+    useEffect(() => {
         const timer = setInterval(() => {
             const raw = localStorage.getItem(SESSION_KEY);
             if (!raw) return;
@@ -565,6 +625,24 @@ function App() {
     useEffect(() => {
         setDashboardTick((value) => value);
     }, [activeView, dashboardPeriod, products]);
+
+    useEffect(() => {
+        if (!products.length) {
+            setMovementForm((current) => ({ ...current, productId: '' }));
+            return;
+        }
+
+        setMovementForm((current) => {
+            if (current.productId && products.some((item) => String(item.id) === String(current.productId))) {
+                return current;
+            }
+
+            return {
+                ...current,
+                productId: String(products[0].id)
+            };
+        });
+    }, [products]);
 
     const filteredProducts = useMemo(() => {
         let list = [...products];
@@ -611,6 +689,88 @@ function App() {
         [products]
     );
 
+    const filteredMovements = useMemo(() => {
+        let list = [...movements];
+
+        if (movementFilter.productId) {
+            list = list.filter((item) => String(item.productId) === String(movementFilter.productId));
+        }
+
+        if (movementFilter.type) {
+            list = list.filter((item) => item.type === movementFilter.type);
+        }
+
+        if (movementFilter.period && movementFilter.period !== 'all') {
+            const days = Number(movementFilter.period);
+            if (Number.isFinite(days) && days > 0) {
+                const startOfToday = new Date();
+                startOfToday.setHours(0, 0, 0, 0);
+
+                const rangeStart = new Date(startOfToday);
+                rangeStart.setDate(startOfToday.getDate() - (days - 1));
+
+                const rangeEnd = new Date(startOfToday);
+                rangeEnd.setHours(23, 59, 59, 999);
+
+                list = list.filter((item) => {
+                    const date = parseDate(item.createdAt);
+                    if (!date) return false;
+                    return date.getTime() >= rangeStart.getTime() && date.getTime() <= rangeEnd.getTime();
+                });
+            }
+        }
+
+        list.sort((a, b) => {
+            const dateA = parseDate(a.createdAt);
+            const dateB = parseDate(b.createdAt);
+            const timeA = dateA ? dateA.getTime() : 0;
+            const timeB = dateB ? dateB.getTime() : 0;
+
+            if (movementFilter.order === 'oldest') {
+                return timeA - timeB;
+            }
+
+            return timeB - timeA;
+        });
+
+        return list;
+    }, [movements, movementFilter]);
+
+    const movementSummary = useMemo(() => {
+        const total = filteredMovements.length;
+        const entries = filteredMovements.filter((item) => item.type === 'entrada').length;
+        const exits = filteredMovements.filter((item) => item.type === 'saida').length;
+        const today = new Date().toDateString();
+        const todayCount = filteredMovements.filter((item) => {
+            const date = parseDate(item.createdAt);
+            return date && date.toDateString() === today;
+        }).length;
+
+        return { total, entries, exits, todayCount };
+    }, [filteredMovements]);
+
+    const movementPeriodLabel = useMemo(() => {
+        if (!movementFilter.period || movementFilter.period === 'all') {
+            return 'Intervalo aplicado: todo o histórico';
+        }
+
+        const days = Number(movementFilter.period);
+        if (!Number.isFinite(days) || days < 1) {
+            return 'Intervalo aplicado: todo o histórico';
+        }
+
+        const startOfToday = new Date();
+        startOfToday.setHours(0, 0, 0, 0);
+
+        const rangeStart = new Date(startOfToday);
+        rangeStart.setDate(startOfToday.getDate() - (days - 1));
+
+        const rangeEnd = new Date(startOfToday);
+        rangeEnd.setHours(23, 59, 59, 999);
+
+        return `Intervalo aplicado: ${rangeStart.toLocaleDateString('pt-BR')} até ${rangeEnd.toLocaleDateString('pt-BR')}`;
+    }, [movementFilter.period]);
+
     useEffect(() => {
         if (!showApp) return;
         if (!lowStockProducts.length) {
@@ -642,7 +802,11 @@ function App() {
     const topValueCategory = [...categoryEntries].sort((a, b) => b[1].valor - a[1].valor)[0];
     const topCategory = [...categoryEntries].sort((a, b) => b[1].quantidade - a[1].quantidade)[0];
     const topValuePct = topValueCategory ? (topValueCategory[1].valor / totalCategoryValue) * 100 : 0;
-    const periodLabel = dashboardPeriod === 'all' ? 'todo o estoque' : `últimos ${dashboardPeriod} dias`;
+    const periodLabel = dashboardPeriod === 'all'
+        ? 'todo o estoque'
+        : dashboardPeriod === '1'
+            ? 'hoje'
+            : `últimos ${dashboardPeriod} dias`;
     const avgValueByProduct = dashboardData.totalProdutos ? dashboardData.totalValor / dashboardData.totalProdutos : 0;
     const avgItemsByProduct = dashboardData.totalProdutos ? dashboardData.totalItens / dashboardData.totalProdutos : 0;
     const concentrationQtyPct = topCategory ? (topCategory[1].quantidade / totalCategoryQty) * 100 : 0;
@@ -702,6 +866,7 @@ function App() {
         setToken(null);
         setSession(null);
         setProducts([]);
+        setMovements([]);
         setActiveView('inventory');
         setShowExportMenu(false);
         setAuthTab('login');
@@ -709,6 +874,19 @@ function App() {
     }
 
     async function loadProductsAfterChange() {
+
+            async function loadMovementsAfterChange() {
+                try {
+                    const list = await api.getMovements();
+                    setMovements(list);
+                } catch (error) {
+                    if (error.status === 401) {
+                        handleLogout('Sessão expirada. Entre novamente.');
+                        return;
+                    }
+                    notify(error.message || 'Não foi possível atualizar as movimentações.', 'error');
+                }
+            }
         try {
             const list = await api.getProducts();
             setProducts(list);
@@ -749,9 +927,40 @@ function App() {
             setAuthFeedback({ type: 'success', text: 'Login realizado com sucesso.' });
             setActiveView('inventory');
             await loadProductsAfterChange();
+            await loadMovementsAfterChange();
         } catch (error) {
             setApiStatus({ kind: 'offline', text: 'API offline' });
             setAuthFeedback({ type: 'error', text: error.message || 'Falha ao autenticar.' });
+        }
+    }
+
+    async function handleCreateMovement(event) {
+        event.preventDefault();
+
+        const productId = Number(movementForm.productId);
+        const payload = {
+            type: movementForm.type,
+            quantity: Number(movementForm.quantity),
+            reason: movementForm.reason.trim()
+        };
+
+        if (!productId || !payload.type || payload.quantity < 1 || !payload.reason) {
+            notify('Preencha os dados da movimentação corretamente.', 'error');
+            return;
+        }
+
+        try {
+            const result = await api.createMovement(productId, payload);
+            setProducts((current) => current.map((item) => (item.id === result.product.id ? result.product : item)));
+            setMovements((current) => [result.movement, ...current]);
+            setMovementForm((current) => ({ ...current, quantity: 1, reason: '' }));
+            notify('Movimentação registrada com sucesso!', 'success');
+        } catch (error) {
+            if (error.status === 401) {
+                handleLogout('Sessão expirada. Entre novamente.');
+                return;
+            }
+            notify(error.message || 'Não foi possível registrar a movimentação.', 'error');
         }
     }
 
@@ -1280,6 +1489,7 @@ function App() {
                         </div>
                         <div className="view-tabs">
                             <button id="inventoryViewBtn" className={`view-tab ${activeView === 'inventory' ? 'active' : ''}`} type="button" onClick={() => setActiveView('inventory')}>Estoque</button>
+                            <button id="movementsViewBtn" className={`view-tab ${activeView === 'movements' ? 'active' : ''}`} type="button" onClick={() => setActiveView('movements')}>Movimentações</button>
                             <button id="dashboardViewBtn" className={`view-tab ${activeView === 'dashboard' ? 'active' : ''}`} type="button" onClick={() => setActiveView('dashboard')}>Dashboard</button>
                         </div>
                     </header>
@@ -1295,6 +1505,7 @@ function App() {
                                 <label htmlFor="dashboardPeriodSelect">Período analisado</label>
                                 <select id="dashboardPeriodSelect" value={dashboardPeriod} onChange={(event) => setDashboardPeriod(event.target.value)}>
                                     <option value="all">Todo o estoque</option>
+                                    <option value="1">Hoje</option>
                                     <option value="7">Últimos 7 dias</option>
                                     <option value="30">Últimos 30 dias</option>
                                     <option value="90">Últimos 90 dias</option>
@@ -1384,6 +1595,203 @@ function App() {
                             </div>
                             </div>
                         </section>
+
+                        <div className={`app-view ${activeView === 'movements' ? 'active' : ''}`} data-view="movements">
+                            <section className="movement-section">
+                                <div className="section-heading">
+                                    <h2>Entrada e Saída de Estoque</h2>
+                                    <p>Registre movimentações e acompanhe o histórico de alterações por produto.</p>
+                                </div>
+
+                                <div className="movement-layout">
+                                    <form className="movement-form" onSubmit={handleCreateMovement}>
+                                        <div className="form-group">
+                                            <label htmlFor="movementProduct">Produto</label>
+                                            <select
+                                                id="movementProduct"
+                                                value={movementForm.productId}
+                                                onChange={(event) => setMovementForm((current) => ({ ...current, productId: event.target.value }))}
+                                                required
+                                            >
+                                                {products.length === 0 ? <option value="">Nenhum produto disponível</option> : null}
+                                                {products.map((product) => (
+                                                    <option value={String(product.id)} key={product.id}>
+                                                        {product.nome} (estoque: {Number(product.quantidade) || 0})
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
+
+                                        <div className="form-row">
+                                            <div className="form-group">
+                                                <label htmlFor="movementType">Tipo</label>
+                                                <select
+                                                    id="movementType"
+                                                    value={movementForm.type}
+                                                    onChange={(event) => setMovementForm((current) => ({ ...current, type: event.target.value }))}
+                                                    required
+                                                >
+                                                    <option value="entrada">Entrada</option>
+                                                    <option value="saida">Saída</option>
+                                                </select>
+                                            </div>
+
+                                            <div className="form-group">
+                                                <label htmlFor="movementQuantity">Quantidade</label>
+                                                <input
+                                                    id="movementQuantity"
+                                                    type="number"
+                                                    min="1"
+                                                    value={movementForm.quantity}
+                                                    onChange={(event) => setMovementForm((current) => ({ ...current, quantity: event.target.value }))}
+                                                    required
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div className="form-group">
+                                            <label htmlFor="movementReason">Motivo</label>
+                                            <input
+                                                id="movementReason"
+                                                type="text"
+                                                placeholder="Ex: Compra, venda, ajuste, perda"
+                                                value={movementForm.reason}
+                                                onChange={(event) => setMovementForm((current) => ({ ...current, reason: event.target.value }))}
+                                                required
+                                            />
+                                        </div>
+
+                                        <button type="submit" className="btn btn-primary" disabled={!products.length}>Registrar movimentação</button>
+                                    </form>
+
+                                    <div className="movement-filter-card">
+                                        <h3>Filtros do histórico</h3>
+                                        <div className="form-group">
+                                            <label htmlFor="movementFilterProduct">Produto</label>
+                                            <select
+                                                id="movementFilterProduct"
+                                                value={movementFilter.productId}
+                                                onChange={(event) => setMovementFilter((current) => ({ ...current, productId: event.target.value }))}
+                                            >
+                                                <option value="">Todos os produtos</option>
+                                                {products.map((product) => (
+                                                    <option value={String(product.id)} key={`filter_${product.id}`}>{product.nome}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+
+                                        <div className="form-group">
+                                            <label htmlFor="movementFilterType">Tipo</label>
+                                            <select
+                                                id="movementFilterType"
+                                                value={movementFilter.type}
+                                                onChange={(event) => setMovementFilter((current) => ({ ...current, type: event.target.value }))}
+                                            >
+                                                <option value="">Todos os tipos</option>
+                                                <option value="entrada">Entrada</option>
+                                                <option value="saida">Saída</option>
+                                            </select>
+                                        </div>
+
+                                        <div className="form-group">
+                                            <label htmlFor="movementFilterPeriod">Período</label>
+                                            <select
+                                                id="movementFilterPeriod"
+                                                value={movementFilter.period}
+                                                onChange={(event) => setMovementFilter((current) => ({ ...current, period: event.target.value }))}
+                                            >
+                                                <option value="all">Todo o histórico</option>
+                                                <option value="1">Hoje</option>
+                                                <option value="7">Últimos 7 dias</option>
+                                                <option value="30">Últimos 30 dias</option>
+                                                <option value="90">Últimos 90 dias</option>
+                                            </select>
+                                        </div>
+
+                                        <div className="form-group">
+                                            <label htmlFor="movementFilterOrder">Ordenação</label>
+                                            <select
+                                                id="movementFilterOrder"
+                                                value={movementFilter.order}
+                                                onChange={(event) => setMovementFilter((current) => ({ ...current, order: event.target.value }))}
+                                            >
+                                                <option value="recent">Mais recentes primeiro</option>
+                                                <option value="oldest">Mais antigos primeiro</option>
+                                            </select>
+                                        </div>
+
+                                        <p className="movement-period-hint">{movementPeriodLabel}</p>
+                                        <div className="movement-filter-actions">
+                                            <button
+                                                type="button"
+                                                className="btn btn-secondary"
+                                                onClick={() => setMovementFilter({ productId: '', type: '', period: 'all', order: 'recent' })}
+                                            >
+                                                Limpar filtros
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <section className="movement-history">
+                                    <h3>Histórico de movimentações</h3>
+                                    <div className="movement-kpis">
+                                        <article className="movement-kpi-card movement-kpi-total">
+                                            <span>Total</span>
+                                            <strong>{movementSummary.total}</strong>
+                                        </article>
+                                        <article className="movement-kpi-card movement-kpi-entry">
+                                            <span>Entradas</span>
+                                            <strong>{movementSummary.entries}</strong>
+                                        </article>
+                                        <article className="movement-kpi-card movement-kpi-exit">
+                                            <span>Saídas</span>
+                                            <strong>{movementSummary.exits}</strong>
+                                        </article>
+                                        <article className="movement-kpi-card movement-kpi-today">
+                                            <span>Hoje</span>
+                                            <strong>{movementSummary.todayCount}</strong>
+                                        </article>
+                                    </div>
+                                    {loadingMovements ? <p className="empty-state">Carregando movimentações...</p> : null}
+                                    <div className="movement-table-wrap">
+                                        <table className="movement-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>Data</th>
+                                                    <th>Produto</th>
+                                                    <th>Tipo</th>
+                                                    <th>Qtd</th>
+                                                    <th>Saldo</th>
+                                                    <th>Motivo</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {filteredMovements.length === 0 && !loadingMovements ? (
+                                                    <tr>
+                                                        <td colSpan="6" className="movement-empty">Nenhuma movimentação registrada.</td>
+                                                    </tr>
+                                                ) : null}
+                                                {filteredMovements.map((movement) => (
+                                                    <tr key={movement.id}>
+                                                        <td>{formatDate(movement.createdAt)}</td>
+                                                        <td>{movement.productName}</td>
+                                                        <td>
+                                                            <span className={`movement-badge ${movement.type === 'entrada' ? 'entry' : 'exit'}`}>
+                                                                {movement.type === 'entrada' ? '▲ Entrada' : '▼ Saída'}
+                                                            </span>
+                                                        </td>
+                                                        <td>{movement.quantity}</td>
+                                                        <td>{movement.previousStock} → {movement.newStock}</td>
+                                                        <td>{movement.reason}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </section>
+                            </section>
+                        </div>
 
                         <div className={`app-view ${activeView === 'inventory' ? 'active' : ''}`} data-view="inventory">
                             <section className="form-section">

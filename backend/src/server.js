@@ -96,6 +96,27 @@ function sanitizeProduct(input) {
   };
 }
 
+function sanitizeMovement(input) {
+  const rawType = String(input.type || '').trim().toLowerCase();
+  const type = rawType === 'entrada' || rawType === 'saida' ? rawType : '';
+  const quantity = Number(input.quantity);
+  const reason = String(input.reason || '').trim();
+
+  if (!type) {
+    throw new Error('Tipo de movimentação inválido. Use entrada ou saida.');
+  }
+
+  if (!Number.isInteger(quantity) || quantity < 1) {
+    throw new Error('Quantidade da movimentação deve ser um inteiro maior que zero.');
+  }
+
+  if (!reason) {
+    throw new Error('Motivo da movimentação é obrigatório.');
+  }
+
+  return { type, quantity, reason };
+}
+
 async function ensureAdminUser() {
   const db = await readDb();
   const adminEmail = 'admin@estoque.com';
@@ -299,6 +320,83 @@ app.delete('/api/products/:id', authMiddleware, async (req, res) => {
   await writeDb(db);
 
   return res.json({ message: 'Produto removido com sucesso.' });
+});
+
+app.post('/api/products/:id/movements', authMiddleware, async (req, res) => {
+  try {
+    const productId = Number(req.params.id);
+    const db = await readDb();
+    const product = db.products.find(
+      (p) => p.id === productId && p.userId === req.user.sub
+    );
+
+    if (!product) {
+      return res.status(404).json({ error: 'Produto não encontrado.' });
+    }
+
+    const movementData = sanitizeMovement(req.body);
+    const previousStock = Number(product.quantidade) || 0;
+
+    if (movementData.type === 'saida' && movementData.quantity > previousStock) {
+      return res.status(400).json({ error: 'Saída inválida: saldo insuficiente no estoque.' });
+    }
+
+    const newStock = movementData.type === 'entrada'
+      ? previousStock + movementData.quantity
+      : previousStock - movementData.quantity;
+
+    const movement = {
+      id: Date.now() + Math.floor(Math.random() * 1000),
+      userId: req.user.sub,
+      productId: product.id,
+      productName: product.nome,
+      type: movementData.type,
+      quantity: movementData.quantity,
+      reason: movementData.reason,
+      previousStock,
+      newStock,
+      createdAt: new Date().toISOString()
+    };
+
+    product.quantidade = newStock;
+    product.dataAtualizacao = new Date().toLocaleDateString('pt-BR');
+
+    db.movements.unshift(movement);
+    await writeDb(db);
+
+    return res.status(201).json({ movement, product });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Erro ao registrar movimentação.' });
+  }
+});
+
+app.get('/api/movements', authMiddleware, async (req, res) => {
+  const db = await readDb();
+  const productId = req.query.productId ? Number(req.query.productId) : null;
+  const type = req.query.type ? String(req.query.type).trim().toLowerCase() : '';
+  const from = req.query.from ? new Date(String(req.query.from)) : null;
+  const to = req.query.to ? new Date(String(req.query.to)) : null;
+
+  let list = db.movements.filter((item) => item.userId === req.user.sub);
+
+  if (Number.isFinite(productId)) {
+    list = list.filter((item) => Number(item.productId) === productId);
+  }
+
+  if (type === 'entrada' || type === 'saida') {
+    list = list.filter((item) => item.type === type);
+  }
+
+  if (from && !Number.isNaN(from.getTime())) {
+    list = list.filter((item) => new Date(item.createdAt).getTime() >= from.getTime());
+  }
+
+  if (to && !Number.isNaN(to.getTime())) {
+    list = list.filter((item) => new Date(item.createdAt).getTime() <= to.getTime());
+  }
+
+  list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  return res.json(list);
 });
 
 app.post('/api/products/import', authMiddleware, async (req, res) => {
