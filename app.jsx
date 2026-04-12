@@ -186,9 +186,13 @@ function formatDate(value) {
     const parsed = parseDate(value);
     if (!parsed) return String(value);
     return new Intl.DateTimeFormat('pt-BR', {
-        dateStyle: 'short',
-        timeStyle: 'short'
-    }).format(parsed);
+        weekday: 'short',
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    }).format(parsed).replace(/\./g, '');
 }
 
 function parseDate(raw) {
@@ -802,10 +806,19 @@ function App() {
     }, [showApp, lowStockProducts]);
 
     const dashboardData = useMemo(() => computeDashboard(products, dashboardPeriod), [products, dashboardPeriod]);
-    const nowLabel = useMemo(() => new Intl.DateTimeFormat('pt-BR', {
-        dateStyle: 'full',
-        timeStyle: 'medium'
-    }).format(now), [now]);
+    const nowLabel = useMemo(() => {
+        const label = new Intl.DateTimeFormat('pt-BR', {
+            weekday: 'long',
+            day: '2-digit',
+            month: 'long',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+        }).format(now);
+
+        return label.charAt(0).toUpperCase() + label.slice(1);
+    }, [now]);
     const categoryEntries = Object.entries(dashboardData.categorias);
     const totalCategoryQty = categoryEntries.reduce((sum, [, item]) => sum + item.quantidade, 0) || 1;
     const totalCategoryValue = categoryEntries.reduce((sum, [, item]) => sum + item.valor, 0) || 1;
@@ -1772,7 +1785,7 @@ function App() {
                                         <table className="movement-table">
                                             <thead>
                                                 <tr>
-                                                    <th>Data</th>
+                                                    <th>Data e hora</th>
                                                     <th>Produto</th>
                                                     <th>Tipo</th>
                                                     <th>Qtd</th>
@@ -2044,11 +2057,11 @@ function App() {
                                 <div className="info-value price">{formatCurrency((Number(detailsProduct.quantidade) || 0) * (Number(detailsProduct.preco) || 0))}</div>
                             </div>
                             <div className="info-item">
-                                <div className="info-label">Data de Criação</div>
+                                <div className="info-label">Criado em</div>
                                 <div>{formatDate(detailsProduct.dataCriacao)}</div>
                             </div>
                             <div className="info-item">
-                                <div className="info-label">Última Atualização</div>
+                                <div className="info-label">Atualizado em</div>
                                 <div>{formatDate(detailsProduct.dataAtualizacao)}</div>
                             </div>
                         </div>

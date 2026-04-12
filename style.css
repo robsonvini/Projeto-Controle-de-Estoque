@@ -353,6 +353,7 @@ body {
 }
 
 .password-field {
+    position: relative;
     display: grid;
     grid-template-columns: 40px minmax(0, 1fr) auto;
     gap: 0;
@@ -639,17 +640,29 @@ header .subtitle {
 }
 
 #loggedUserText {
-    background: rgba(255, 255, 255, 0.22);
-    padding: 8px 12px;
-    border-radius: 6px;
+    display: inline-flex;
+    align-items: center;
+    background: rgba(255, 255, 255, 0.18);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    padding: 10px 14px;
+    border-radius: 999px;
     font-weight: 600;
+    backdrop-filter: blur(10px);
 }
 
 .current-datetime {
-    background: rgba(255, 255, 255, 0.18);
-    padding: 8px 12px;
-    border-radius: 6px;
-    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.14);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    padding: 10px 14px;
+    border-radius: 999px;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    font-variant-numeric: tabular-nums;
+    backdrop-filter: blur(10px);
+    white-space: nowrap;
 }
 
 #apiStatusApp {
