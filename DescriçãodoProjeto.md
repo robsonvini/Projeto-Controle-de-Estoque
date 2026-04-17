@@ -76,4 +76,4 @@ No Windows, o atalho [iniciar-localhost.bat](iniciar-localhost.bat) faz esse flu
 - As bibliotecas externas do front são carregadas via CDN.
 
 **Versão**: 2.0.0
-**Última Atualização**: 16/04/2026
+**Última Atualização**: 17/04/2026

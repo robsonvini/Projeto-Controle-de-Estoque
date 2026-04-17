@@ -1376,11 +1376,8 @@ textarea {
     font-weight: 600;
 }
 
-.product-category.Eletrônicos { background: #4f46e5; }
-.product-category.Alimentos { background: #10b981; }
-.product-category.Roupas { background: #f59e0b; }
-.product-category.Higiene { background: #8b5cf6; }
-.product-category.Outros { background: #6b7280; }
+.product-category.Eletronicos { background: #4f46e5; }
+.product-category.Material-de-escritorio { background: #0f766e; }
 
 .product-description {
     color: var(--text-light);

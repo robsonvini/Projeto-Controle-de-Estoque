@@ -25,6 +25,8 @@ const xmlParser = new XMLParser({
     attributeNamePrefix: '@_'
 });
 
+const PRODUCT_CATEGORIES = ['Eletrônicos', 'Material de escritório'];
+
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors({ origin: process.env.CORS_ORIGIN === '*' ? true : (process.env.CORS_ORIGIN || true) }));
 app.use(express.json({ limit: '10mb' }));
@@ -86,6 +88,28 @@ function normalizeText(value) {
     return String(value ?? '').trim();
 }
 
+function normalizeCategory(value) {
+    const text = normalizeText(value);
+    if (!text) {
+        return '';
+    }
+
+    const normalized = text
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase();
+
+    if (normalized === 'eletronicos') {
+        return 'Eletrônicos';
+    }
+
+    if (normalized === 'material de escritorio') {
+        return 'Material de escritório';
+    }
+
+    return text;
+}
+
 function getFieldValue(source, candidates) {
     if (!source || typeof source !== 'object') {
         return undefined;
@@ -108,12 +132,12 @@ function getFieldValue(source, candidates) {
 
 function toProductPayload(input) {
     const nome = normalizeText(getFieldValue(input, ['nome', 'name', 'produto']));
-    const categoria = normalizeText(getFieldValue(input, ['categoria', 'category']));
+    const categoria = normalizeCategory(getFieldValue(input, ['categoria', 'category']));
     const quantidade = parseFlexibleNumber(getFieldValue(input, ['quantidade', 'quantity', 'qtd']), NaN);
     const preco = parseFlexibleNumber(getFieldValue(input, ['preco', 'price', 'preço']), NaN);
     const descricao = normalizeText(getFieldValue(input, ['descricao', 'description']));
 
-    if (!nome || !categoria) {
+    if (!nome || !categoria || !PRODUCT_CATEGORIES.includes(categoria)) {
         throw buildError('Produto inválido: nome e categoria são obrigatórios.');
     }
 

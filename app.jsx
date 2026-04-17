@@ -1,11 +1,17 @@
 const { useEffect, useMemo, useRef, useState } = React;
 
-const PRODUCT_CATEGORIES = ['Eletrônicos', 'Alimentos', 'Roupas', 'Higiene', 'Outros'];
+const PRODUCT_CATEGORIES = ['Eletrônicos', 'Material de escritório'];
 const PRODUCT_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#14b8a6'];
 const MIN_STOCK_THRESHOLD = 2;
 const SESSION_KEY = 'estoqueSession';
 const SESSION_30_MIN = 30 * 60 * 1000;
 const SESSION_24_HOURS = 24 * 60 * 60 * 1000;
+
+const getCategoryClassName = (category) => String(category || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
 
 class ApiClient {
     constructor() {
@@ -271,7 +277,10 @@ function computeDashboard(products, period) {
     const categorias = {};
 
     filtered.forEach((produto) => {
-        const categoria = produto.categoria || 'Outros';
+        const categoria = PRODUCT_CATEGORIES.includes(produto.categoria) ? produto.categoria : null;
+        if (!categoria) {
+            return;
+        }
         if (!categorias[categoria]) {
             categorias[categoria] = { quantidade: 0, valor: 0, produtos: 0 };
         }
@@ -1935,7 +1944,7 @@ function App() {
                                             <div className={`product-card ${emBaixa ? 'low-stock' : ''}`} key={product.id} data-id={product.id} onClick={() => setDetailsProduct(product)}>
                                                 <div className="product-header">
                                                     <span className="product-name">{product.nome}</span>
-                                                    <span className={`product-category ${product.categoria}`}>{product.categoria}</span>
+                                                    <span className={`product-category ${getCategoryClassName(product.categoria)}`}>{product.categoria}</span>
                                                 </div>
                                                 {product.descricao ? <p className="product-description">{String(product.descricao).substring(0, 100)}</p> : null}
                                                 <div className="product-info">
@@ -2038,7 +2047,7 @@ function App() {
                         <div style={{ display: 'grid', gap: '15px', marginTop: '20px' }}>
                             <div className="info-item">
                                 <div className="info-label">Categoria</div>
-                                <div className={`product-category ${detailsProduct.categoria}`} style={{ display: 'inline-block' }}>{detailsProduct.categoria}</div>
+                                <div className={`product-category ${getCategoryClassName(detailsProduct.categoria)}`} style={{ display: 'inline-block' }}>{detailsProduct.categoria}</div>
                             </div>
                             <div className="info-item">
                                 <div className="info-label">Descrição</div>
