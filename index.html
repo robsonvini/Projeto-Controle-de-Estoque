@@ -8,15 +8,119 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
-    <script src="https://cdn.jsdelivr.net/npm/react@18/umd/react.development.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.development.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@babel/standalone/babel.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body>
-    <div id="root"></div>
-    <script src="bootstrap.js"></script>
+    <div id="root" style="min-height:100vh;display:grid;place-items:center;color:#e2e8f0;background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%);font-family:'Inter',sans-serif;">Carregando aplicação...</div>
+    <script>
+        (function () {
+            function showFatalError(prefix, detail) {
+                var root = document.getElementById('root');
+                if (!root) return;
+
+                var safe = String(detail || 'Erro desconhecido').replace(/[<>&]/g, function (c) {
+                    return ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' })[c];
+                });
+
+                root.innerHTML =
+                    '<div style="max-width:760px;margin:24px;padding:20px;border-radius:12px;background:#fee2e2;color:#7f1d1d;border:1px solid #fecaca;box-shadow:0 8px 24px rgba(0,0,0,.15);font-family:Inter,sans-serif">'
+                    + '<h2 style="margin:0 0 10px 0;font-size:20px">Falha ao carregar a aplicação</h2>'
+                    + '<p style="margin:0 0 8px 0"><strong>' + prefix + '</strong></p>'
+                    + '<pre style="white-space:pre-wrap;word-break:break-word;margin:0;background:#fff7ed;padding:10px;border-radius:8px;border:1px solid #fed7aa">' + safe + '</pre>'
+                    + '<p style="margin:12px 0 0 0">Tente atualizar com Ctrl+F5. Se persistir, este erro ajuda a identificar o problema.</p>'
+                    + '</div>';
+            }
+
+            window.addEventListener('error', function (event) {
+                showFatalError('Erro JavaScript', (event && (event.error && event.error.stack || event.message)) || 'Sem detalhes');
+            });
+
+            window.addEventListener('unhandledrejection', function (event) {
+                var reason = event && event.reason;
+                var detail = reason && (reason.stack || reason.message) ? (reason.stack || reason.message) : String(reason || 'Promise rejeitada sem detalhe');
+                showFatalError('Erro assíncrono', detail);
+            });
+
+            function loadScript(url) {
+                return new Promise(function (resolve, reject) {
+                    var script = document.createElement('script');
+                    script.src = url;
+                    script.async = false;
+                    script.crossOrigin = 'anonymous';
+                    script.onload = function () { resolve(url); };
+                    script.onerror = function () { reject(new Error('Falha ao carregar: ' + url)); };
+                    document.head.appendChild(script);
+                });
+            }
+
+            async function loadWithFallback(name, urls, testFn) {
+                var lastError = null;
+                for (var i = 0; i < urls.length; i += 1) {
+                    try {
+                        await loadScript(urls[i]);
+                        if (!testFn || testFn()) {
+                            return;
+                        }
+                        lastError = new Error(name + ' carregado, mas objeto global não foi encontrado.');
+                    } catch (error) {
+                        lastError = error;
+                    }
+                }
+                throw lastError || new Error('Não foi possível carregar ' + name + '.');
+            }
+
+            async function bootstrapApp() {
+                try {
+                    await loadWithFallback('React', [
+                        'https://cdn.jsdelivr.net/npm/react@18/umd/react.development.js',
+                        'https://unpkg.com/react@18/umd/react.development.js'
+                    ], function () { return !!window.React; });
+
+                    await loadWithFallback('ReactDOM', [
+                        'https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.development.js',
+                        'https://unpkg.com/react-dom@18/umd/react-dom.development.js'
+                    ], function () { return !!window.ReactDOM; });
+
+                    await loadWithFallback('Babel', [
+                        'https://cdn.jsdelivr.net/npm/@babel/standalone/babel.min.js',
+                        'https://unpkg.com/@babel/standalone/babel.min.js'
+                    ], function () { return !!window.Babel; });
+
+                    await loadWithFallback('Chart.js', [
+                        'https://cdn.jsdelivr.net/npm/chart.js',
+                        'https://unpkg.com/chart.js'
+                    ], function () { return !!window.Chart; });
+
+                    await loadWithFallback('html2canvas', [
+                        'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js',
+                        'https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js'
+                    ], function () { return !!window.html2canvas; });
+
+                    await loadWithFallback('jsPDF', [
+                        'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
+                        'https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js'
+                    ], function () { return !!(window.jspdf && window.jspdf.jsPDF); });
+
+                    var response = await fetch('app.jsx', { cache: 'no-store' });
+                    if (!response.ok) {
+                        throw new Error('Não foi possível baixar app.jsx (HTTP ' + response.status + ').');
+                    }
+
+                    var jsxCode = await response.text();
+                    var transformed = window.Babel.transform(jsxCode, {
+                        presets: ['env', 'react'],
+                        sourceMaps: 'inline',
+                        filename: 'app.jsx'
+                    });
+
+                    var runner = new Function(transformed.code + '\n//# sourceURL=app.transpiled.js');
+                    runner();
+                } catch (error) {
+                    showFatalError('Falha no bootstrap', error && (error.stack || error.message) ? (error.stack || error.message) : String(error));
+                }
+            }
+
+            bootstrapApp();
+        }());
+    </script>
 </body>
 </html>

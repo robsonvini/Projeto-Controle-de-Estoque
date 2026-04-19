@@ -153,6 +153,52 @@ class ApiClient {
         }, true);
     }
 
+    getBackups() {
+        return this.request('/backups', { method: 'GET' }, true);
+    }
+
+    createBackup() {
+        return this.request('/backups/create-now', {
+            method: 'POST',
+            body: JSON.stringify({})
+        }, true);
+    }
+
+    async exportBackup() {
+        if (!this.token) {
+            throw new Error('Sessão expirada. Faça login novamente.');
+        }
+
+        const response = await fetch(`${this.baseUrl}/backups/export`, {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${this.token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({})
+        });
+
+        if (!response.ok) {
+            const contentType = response.headers.get('content-type') || '';
+            const body = contentType.includes('application/json') ? await response.json() : null;
+            throw new Error(body?.error || 'Erro ao exportar backup.');
+        }
+
+        const blob = await response.blob();
+        const contentDisposition = response.headers.get('content-disposition') || '';
+        const match = contentDisposition.match(/filename="?([^";]+)"?/i);
+        const filename = match?.[1] || `backup-manual-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+
+        return { blob, filename };
+    }
+
+    restoreBackup(filename) {
+        return this.request('/backups/restore', {
+            method: 'POST',
+            body: JSON.stringify({ filename })
+        }, true);
+    }
+
     async download(path, filename) {
         if (!this.token) {
             throw new Error('Sessão expirada. Faça login novamente.');
@@ -268,6 +314,60 @@ function filterByPeriod(products, period) {
     });
 }
 
+function filterMovementsByPeriod(movements, period) {
+    const days = getPeriodDays(period);
+    if (!days) return movements;
+
+    if (days === 1) {
+        const startOfToday = new Date();
+        startOfToday.setHours(0, 0, 0, 0);
+        const startTimestamp = startOfToday.getTime();
+
+        return movements.filter((movement) => {
+            const date = parseDate(movement.createdAt);
+            return date && date.getTime() >= startTimestamp;
+        });
+    }
+
+    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+    return movements.filter((movement) => {
+        const date = parseDate(movement.createdAt);
+        return date && date.getTime() >= cutoff;
+    });
+}
+
+function computeMovementFlow(movements) {
+    const summary = (Array.isArray(movements) ? movements : []).reduce((acc, movement) => {
+        const type = String(movement?.type || '').toLowerCase();
+        const quantity = Math.max(0, Number(movement?.quantity) || 0);
+
+        if (type === 'entrada') {
+            acc.entryCount += 1;
+            acc.entryQuantity += quantity;
+            return acc;
+        }
+
+        if (type === 'saida') {
+            acc.exitCount += 1;
+            acc.exitQuantity += quantity;
+            return acc;
+        }
+
+        return acc;
+    }, {
+        entryCount: 0,
+        exitCount: 0,
+        entryQuantity: 0,
+        exitQuantity: 0,
+        totalMovements: Array.isArray(movements) ? movements.length : 0
+    });
+
+    return {
+        ...summary,
+        netQuantity: summary.entryQuantity - summary.exitQuantity
+    };
+}
+
 function computeDashboard(products, period) {
     const filtered = filterByPeriod(products, period);
     const totalProdutos = filtered.length;
@@ -360,18 +460,21 @@ function Modal({ title, onClose, children, footer }) {
 function DashboardCharts({ visible, data }) {
     const categoryRef = useRef(null);
     const statusRef = useRef(null);
-    const chartsRef = useRef({ category: null, status: null });
+    const flowRef = useRef(null);
+    const chartsRef = useRef({ category: null, status: null, flow: null });
 
     useEffect(() => {
-        if (!visible || !window.Chart || !categoryRef.current || !statusRef.current) return undefined;
+        if (!visible || !window.Chart || !categoryRef.current || !statusRef.current || !flowRef.current) return undefined;
 
         const categoryEntries = Object.entries(data.categorias).sort((a, b) => b[1].quantidade - a[1].quantidade);
         const categoryLabels = categoryEntries.length ? categoryEntries.map(([name]) => name) : ['Sem dados'];
         const categoryValues = categoryEntries.length ? categoryEntries.map(([, info]) => info.quantidade) : [1];
         const stockValues = [Math.max(data.totalProdutos - data.produtosBaixos, 0), data.produtosBaixos];
+        const movementValues = [Math.max(data.fluxo.entryQuantity, 0), Math.max(data.fluxo.exitQuantity, 0)];
 
         if (chartsRef.current.category) chartsRef.current.category.destroy();
         if (chartsRef.current.status) chartsRef.current.status.destroy();
+        if (chartsRef.current.flow) chartsRef.current.flow.destroy();
 
         chartsRef.current.category = new window.Chart(categoryRef.current.getContext('2d'), {
             type: 'doughnut',
@@ -411,9 +514,34 @@ function DashboardCharts({ visible, data }) {
             }
         });
 
+        chartsRef.current.flow = new window.Chart(flowRef.current.getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels: ['Entradas', 'Saídas'],
+                datasets: [{
+                    label: 'Quantidade movimentada',
+                    data: movementValues,
+                    backgroundColor: ['#10b981', '#ef4444'],
+                    borderRadius: 10,
+                    maxBarThickness: 72
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false }
+                },
+                scales: {
+                    y: { beginAtZero: true, ticks: { precision: 0 } }
+                }
+            }
+        });
+
         return () => {
             if (chartsRef.current.category) chartsRef.current.category.destroy();
             if (chartsRef.current.status) chartsRef.current.status.destroy();
+            if (chartsRef.current.flow) chartsRef.current.flow.destroy();
         };
     }, [visible, data]);
 
@@ -432,6 +560,13 @@ function DashboardCharts({ visible, data }) {
                     <p>Distribuição percentual entre estoque saudável e estoque baixo.</p>
                 </div>
                 <canvas ref={statusRef} height="260"></canvas>
+            </div>
+            <div className="chart-card">
+                <div className="section-heading compact">
+                    <h3>Fluxo de movimentações</h3>
+                    <p>Volume de entradas e saídas de produtos no período selecionado.</p>
+                </div>
+                <canvas ref={flowRef} height="260"></canvas>
             </div>
         </div>
     );
@@ -465,6 +600,8 @@ function App() {
     const [loadingProducts, setLoadingProducts] = useState(false);
     const [loadingMovements, setLoadingMovements] = useState(false);
     const [exportingKpiPdf, setExportingKpiPdf] = useState(false);
+    const [backups, setBackups] = useState([]);
+    const [loadingBackups, setLoadingBackups] = useState(false);
     const [activeView, setActiveView] = useState('inventory');
     const [dashboardPeriod, setDashboardPeriod] = useState('all');
     const [showExportMenu, setShowExportMenu] = useState(false);
@@ -474,6 +611,7 @@ function App() {
     const [sortOption, setSortOption] = useState('name');
     const [productForm, setProductForm] = useState({
         nome: '',
+        patrimonio: '',
         categoria: '',
         quantidade: 1,
         preco: '',
@@ -481,6 +619,7 @@ function App() {
     });
     const [editForm, setEditForm] = useState({
         nome: '',
+        patrimonio: '',
         categoria: 'Eletrônicos',
         quantidade: 1,
         preco: '',
@@ -524,16 +663,15 @@ function App() {
         checkBackend(true);
         apiCheckerRef.current = setInterval(() => checkBackend(true), 15000);
 
-        const storedSession = (() => {
-            try {
-                const raw = localStorage.getItem(SESSION_KEY);
-                return raw ? JSON.parse(raw) : null;
-            } catch {
-                return null;
-            }
-        })();
+        let storedSession = null;
+        try {
+            const raw = localStorage.getItem(SESSION_KEY);
+            storedSession = raw ? JSON.parse(raw) : null;
+        } catch {
+            storedSession = null;
+        }
 
-        if (!api.token || !storedSession || !storedSession.expiraEm || Date.now() > storedSession.expiraEm) {
+        if (!api.token || !storedSession || !storedSession.expiraEm || Date.now() > storedSession.expiraEm || !storedSession.remember) {
             api.token = null;
             localStorage.removeItem(SESSION_KEY);
             setSession(null);
@@ -595,6 +733,26 @@ function App() {
     }, [bootstrapped, token]);
 
     useEffect(() => {
+        if (!bootstrapped || !token) return undefined;
+
+        const loadBackupsData = async () => {
+            try {
+                setLoadingBackups(true);
+                const result = await api.getBackups();
+                setBackups(result.backups || []);
+            } catch (error) {
+                if (error.status !== 401) {
+                    console.error('Erro ao carregar backups:', error.message);
+                }
+            } finally {
+                setLoadingBackups(false);
+            }
+        };
+
+        loadBackupsData();
+    }, [bootstrapped, token]);
+
+    useEffect(() => {
         const timer = setInterval(() => {
             const raw = localStorage.getItem(SESSION_KEY);
             if (!raw) return;
@@ -636,6 +794,7 @@ function App() {
         if (editingProduct) {
             setEditForm({
                 nome: editingProduct.nome || '',
+                patrimonio: editingProduct.patrimonio || '',
                 categoria: editingProduct.categoria || 'Eletrônicos',
                 quantidade: editingProduct.quantidade || 1,
                 preco: editingProduct.preco ?? '',
@@ -673,6 +832,7 @@ function App() {
         if (query) {
             list = list.filter((product) => (
                 product.nome?.toLowerCase().includes(query) ||
+                String(product.patrimonio || '').toLowerCase().includes(query) ||
                 (product.descricao || '').toLowerCase().includes(query) ||
                 product.categoria?.toLowerCase().includes(query)
             ));
@@ -815,6 +975,9 @@ function App() {
     }, [showApp, lowStockProducts]);
 
     const dashboardData = useMemo(() => computeDashboard(products, dashboardPeriod), [products, dashboardPeriod]);
+    const dashboardMovements = useMemo(() => filterMovementsByPeriod(movements, dashboardPeriod), [movements, dashboardPeriod]);
+    const dashboardFlow = useMemo(() => computeMovementFlow(dashboardMovements), [dashboardMovements]);
+    const dashboardChartsData = useMemo(() => ({ ...dashboardData, fluxo: dashboardFlow }), [dashboardData, dashboardFlow]);
     const nowLabel = useMemo(() => {
         const label = new Intl.DateTimeFormat('pt-BR', {
             weekday: 'long',
@@ -846,6 +1009,7 @@ function App() {
     const avgItemsByProduct = dashboardData.totalProdutos ? dashboardData.totalItens / dashboardData.totalProdutos : 0;
     const concentrationQtyPct = topCategory ? (topCategory[1].quantidade / totalCategoryQty) * 100 : 0;
     const concentrationValuePct = topValueCategory ? (topValueCategory[1].valor / totalCategoryValue) * 100 : 0;
+    const flowBalanceLabel = dashboardFlow.netQuantity >= 0 ? `+${dashboardFlow.netQuantity}` : `${dashboardFlow.netQuantity}`;
     const kpiCards = [
         {
             title: 'Saúde do estoque',
@@ -909,19 +1073,18 @@ function App() {
     }
 
     async function loadProductsAfterChange() {
-
-            async function loadMovementsAfterChange() {
-                try {
-                    const list = await api.getMovements();
-                    setMovements(list);
-                } catch (error) {
-                    if (error.status === 401) {
-                        handleLogout('Sessão expirada. Entre novamente.');
-                        return;
-                    }
-                    notify(error.message || 'Não foi possível atualizar as movimentações.', 'error');
+        async function loadMovementsAfterChange() {
+            try {
+                const list = await api.getMovements();
+                setMovements(list);
+            } catch (error) {
+                if (error.status === 401) {
+                    handleLogout('Sessão expirada. Entre novamente.');
+                    return;
                 }
+                notify(error.message || 'Não foi possível atualizar as movimentações.', 'error');
             }
+        }
         try {
             const list = await api.getProducts();
             setProducts(list);
@@ -932,6 +1095,7 @@ function App() {
             }
             notify(error.message || 'Não foi possível atualizar os produtos.', 'error');
         }
+        await loadMovementsAfterChange();
     }
 
     async function handleLogin(event) {
@@ -953,10 +1117,15 @@ function App() {
             const expiraEm = now + (loginForm.remember ? SESSION_24_HOURS : SESSION_30_MIN);
             const nextSession = {
                 ...response.user,
-                expiraEm
+                expiraEm,
+                remember: Boolean(loginForm.remember)
             };
 
-            localStorage.setItem(SESSION_KEY, JSON.stringify(nextSession));
+            if (loginForm.remember) {
+                localStorage.setItem(SESSION_KEY, JSON.stringify(nextSession));
+            } else {
+                localStorage.removeItem(SESSION_KEY);
+            }
             setSession(nextSession);
             setLoginForm((current) => ({ ...current, password: '' }));
             setAuthFeedback({ type: 'success', text: 'Login realizado com sucesso.' });
@@ -1071,6 +1240,7 @@ function App() {
 
         const payload = {
             nome: productForm.nome.trim(),
+            patrimonio: productForm.patrimonio.trim(),
             categoria: productForm.categoria,
             quantidade: Number(productForm.quantidade),
             preco: Number(productForm.preco),
@@ -1085,7 +1255,7 @@ function App() {
         try {
             const created = await api.createProduct(payload);
             setProducts((current) => [created, ...current]);
-            setProductForm({ nome: '', categoria: '', quantidade: 1, preco: '', descricao: '' });
+            setProductForm({ nome: '', patrimonio: '', categoria: '', quantidade: 1, preco: '', descricao: '' });
             notify('Produto adicionado com sucesso!', 'success');
         } catch (error) {
             if (error.status === 401) {
@@ -1103,11 +1273,17 @@ function App() {
         const payload = {
             ...editingProduct,
             nome: editForm.nome.trim(),
+            patrimonio: editForm.patrimonio.trim(),
             categoria: editForm.categoria,
             quantidade: Number(editForm.quantidade),
             preco: Number(editForm.preco),
             descricao: editForm.descricao.trim()
         };
+
+        if (!payload.nome || !payload.categoria || payload.quantidade < 0 || payload.preco < 0) {
+            notify('Preencha os campos obrigatórios corretamente.', 'error');
+            return;
+        }
 
         try {
             const updated = await api.updateProduct(editingProduct.id, payload);
@@ -1253,6 +1429,65 @@ function App() {
         }
     }
 
+    async function handleCreateBackupNow() {
+        try {
+            setLoadingBackups(true);
+            const { blob, filename } = await api.exportBackup();
+
+            if (window.showSaveFilePicker) {
+                try {
+                    const handle = await window.showSaveFilePicker({
+                        suggestedName: filename,
+                        types: [
+                            {
+                                description: 'Arquivo JSON de backup',
+                                accept: { 'application/json': ['.json'] }
+                            }
+                        ]
+                    });
+
+                    const writable = await handle.createWritable();
+                    await writable.write(blob);
+                    await writable.close();
+                    notify('Backup salvo com sucesso no local escolhido!', 'success');
+                } catch (error) {
+                    if (error?.name === 'AbortError') {
+                        notify('Salvamento de backup cancelado.', 'warning');
+                    } else {
+                        throw error;
+                    }
+                }
+            } else {
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = filename;
+                link.click();
+                URL.revokeObjectURL(url);
+                notify('Backup baixado. Se necessário, mova o arquivo para a pasta desejada.', 'success');
+            }
+        } catch (error) {
+            notify(error.message || 'Erro ao criar backup.', 'error');
+        } finally {
+            setLoadingBackups(false);
+        }
+    }
+
+    async function handleRestoreBackup(filename) {
+        if (!confirm(`Deseja restaurar o backup "${filename}"? Os dados atuais serão sobrescrito.`)) return;
+
+        try {
+            setLoadingBackups(true);
+            await api.restoreBackup(filename);
+            await loadProductsAfterChange();
+            notify('Backup restaurado com sucesso!', 'success');
+        } catch (error) {
+            notify(error.message || 'Erro ao restaurar backup.', 'error');
+        } finally {
+            setLoadingBackups(false);
+        }
+    }
+
     function togglePassword(key) {
         setShowPasswords((current) => ({ ...current, [key]: !current[key] }));
     }
@@ -1266,7 +1501,7 @@ function App() {
             <div className="auth-shell">
                 <div className="auth-card">
                     <div className="auth-panel" style={{ minHeight: '320px', display: 'grid', placeItems: 'center' }}>
-                        <p className="auth-hint">Carregando aplicação...</p>
+                        <p className="auth-hint" style={{ color: '#334155' }}>Carregando aplicação...</p>
                     </div>
                 </div>
             </div>
@@ -1527,6 +1762,7 @@ function App() {
                             <button id="inventoryViewBtn" className={`view-tab ${activeView === 'inventory' ? 'active' : ''}`} type="button" onClick={() => setActiveView('inventory')}>Estoque</button>
                             <button id="movementsViewBtn" className={`view-tab ${activeView === 'movements' ? 'active' : ''}`} type="button" onClick={() => setActiveView('movements')}>Movimentações</button>
                             <button id="dashboardViewBtn" className={`view-tab ${activeView === 'dashboard' ? 'active' : ''}`} type="button" onClick={() => setActiveView('dashboard')}>Dashboard</button>
+                            <button id="backupsViewBtn" className={`view-tab ${activeView === 'backups' ? 'active' : ''}`} type="button" onClick={() => setActiveView('backups')}>💾 Backups</button>
                         </div>
                     </header>
 
@@ -1580,6 +1816,24 @@ function App() {
                                 </div>
                             </div>
 
+                            <div className="dashboard-summary" style={{ marginTop: '16px' }}>
+                                <div className="dashboard-card accent-green">
+                                    <span className="dashboard-label">Entradas no período</span>
+                                    <strong>{dashboardFlow.entryCount}</strong>
+                                    <small>{dashboardFlow.entryQuantity} item(ns) adicionados</small>
+                                </div>
+                                <div className="dashboard-card accent-blue">
+                                    <span className="dashboard-label">Saídas no período</span>
+                                    <strong>{dashboardFlow.exitCount}</strong>
+                                    <small>{dashboardFlow.exitQuantity} item(ns) retirados</small>
+                                </div>
+                                <div className="dashboard-card accent-orange">
+                                    <span className="dashboard-label">Saldo líquido</span>
+                                    <strong>{flowBalanceLabel}</strong>
+                                    <small>{dashboardFlow.totalMovements} movimentação(ões) em {periodLabel}</small>
+                                </div>
+                            </div>
+
                             <section className="kpi-report">
                                 <div className="section-heading compact">
                                     <h3>Relatórios visuais com KPIs</h3>
@@ -1599,7 +1853,7 @@ function App() {
                                 </div>
                             </section>
 
-                            <DashboardCharts visible={activeView === 'dashboard'} data={dashboardData} />
+                            <DashboardCharts visible={activeView === 'dashboard'} data={dashboardChartsData} />
 
                             <div className="dashboard-breakdown">
                                 <h3>Detalhamento percentual por categoria</h3>
@@ -1829,6 +2083,66 @@ function App() {
                             </section>
                         </div>
 
+                        <div className={`app-view ${activeView === 'backups' ? 'active' : ''}`} data-view="backups">
+                            <section className="form-section">
+                                <h2>Backups do Sistema</h2>
+                                <div className="backup-create-row">
+                                    <button
+                                        type="button"
+                                        className="btn btn-primary"
+                                        onClick={handleCreateBackupNow}
+                                        disabled={loadingBackups}
+                                    >
+                                        {loadingBackups ? '⏳ Processando...' : '💾 Criar e Salvar Backup'}
+                                    </button>
+                                    <small className="backup-create-hint">Ao clicar, será aberta a janela para você escolher onde salvar o arquivo</small>
+                                </div>
+                            </section>
+
+                            {backups.length === 0 ? (
+                                <section className="stats-section backups-section">
+                                    <div className="empty-state">
+                                        <p>📁 Nenhum backup disponível ainda. Crie um para começar!</p>
+                                    </div>
+                                </section>
+                            ) : (
+                                <section className="stats-section backups-section">
+                                    <h3>Backups Disponíveis</h3>
+                                    <div className="backup-table-wrap">
+                                        <table className="backup-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>Arquivo</th>
+                                                    <th>Data/Hora</th>
+                                                    <th>Tamanho</th>
+                                                    <th>Ações</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {backups.map((backup) => (
+                                                    <tr key={backup.filename}>
+                                                        <td><code className="backup-filename">{backup.filename}</code></td>
+                                                        <td>{formatDate(backup.createdAt)}</td>
+                                                        <td>{Math.round(backup.size / 1024)} KB</td>
+                                                        <td>
+                                                            <button
+                                                                type="button"
+                                                                className="btn btn-small btn-info"
+                                                                onClick={() => handleRestoreBackup(backup.filename)}
+                                                                disabled={loadingBackups}
+                                                            >
+                                                                ↺ Restaurar
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </section>
+                            )}
+                        </div>
+
                         <div className={`app-view ${activeView === 'inventory' ? 'active' : ''}`} data-view="inventory">
                             <section className="form-section">
                                 <h2>Adicionar Produto</h2>
@@ -1836,6 +2150,11 @@ function App() {
                                     <div className="form-group">
                                         <label htmlFor="productName">Nome do Produto:</label>
                                         <input id="productName" type="text" placeholder="Ex: Notebook" value={productForm.nome} onChange={(event) => setProductForm((current) => ({ ...current, nome: event.target.value }))} required />
+                                    </div>
+
+                                    <div className="form-group">
+                                        <label htmlFor="productPatrimony">Nº de Patrimônio (opcional):</label>
+                                        <input id="productPatrimony" type="text" placeholder="Ex: PAT-000123 (se houver)" value={productForm.patrimonio} onChange={(event) => setProductForm((current) => ({ ...current, patrimonio: event.target.value }))} />
                                     </div>
 
                                     <div className="form-group">
@@ -1873,7 +2192,7 @@ function App() {
                                 <h2>Estoque</h2>
                                 <div className="controls">
                                     <div className="search-box">
-                                        <input type="text" id="searchInput" placeholder="🔍 Buscar produto..." value={search} onChange={(event) => setSearch(event.target.value)} />
+                                        <input type="text" id="searchInput" placeholder="🔍 Buscar por nome, patrimônio, descrição ou categoria..." value={search} onChange={(event) => setSearch(event.target.value)} />
                                     </div>
 
                                     <div className="filter-group">
@@ -1946,6 +2265,7 @@ function App() {
                                                     <span className="product-name">{product.nome}</span>
                                                     <span className={`product-category ${getCategoryClassName(product.categoria)}`}>{product.categoria}</span>
                                                 </div>
+                                                <p className="product-description">Patrimônio: {product.patrimonio || 'Sem patrimônio'}</p>
                                                 {product.descricao ? <p className="product-description">{String(product.descricao).substring(0, 100)}</p> : null}
                                                 <div className="product-info">
                                                     <div className="info-item">
@@ -2011,6 +2331,11 @@ function App() {
                         </div>
 
                         <div className="form-group">
+                            <label htmlFor="editProductPatrimony">Nº de Patrimônio (opcional):</label>
+                            <input id="editProductPatrimony" type="text" value={editForm.patrimonio} onChange={(event) => setEditForm((current) => ({ ...current, patrimonio: event.target.value }))} />
+                        </div>
+
+                        <div className="form-group">
                             <label htmlFor="editProductCategory">Categoria:</label>
                             <select id="editProductCategory" value={editForm.categoria} onChange={(event) => setEditForm((current) => ({ ...current, categoria: event.target.value }))} required>
                                 {PRODUCT_CATEGORIES.map((category) => (
@@ -2050,6 +2375,10 @@ function App() {
                                 <div className={`product-category ${getCategoryClassName(detailsProduct.categoria)}`} style={{ display: 'inline-block' }}>{detailsProduct.categoria}</div>
                             </div>
                             <div className="info-item">
+                                <div className="info-label">Nº de Patrimônio</div>
+                                <div>{detailsProduct.patrimonio || 'Sem patrimônio'}</div>
+                            </div>
+                            <div className="info-item">
                                 <div className="info-label">Descrição</div>
                                 <div>{detailsProduct.descricao || 'Sem descrição'}</div>
                             </div>
@@ -2081,5 +2410,23 @@ function App() {
     );
 }
 
-const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(<App />);
+try {
+    const mountNode = document.getElementById('root');
+    if (!mountNode) {
+        throw new Error('Elemento #root não encontrado.');
+    }
+
+    const root = ReactDOM.createRoot(mountNode);
+    root.render(<App />);
+} catch (error) {
+    const mountNode = document.getElementById('root');
+    if (mountNode) {
+        mountNode.innerHTML = `
+            <div style="max-width:760px;margin:24px auto;padding:20px;border-radius:12px;background:#fee2e2;color:#7f1d1d;border:1px solid #fecaca;font-family:Inter,sans-serif;">
+                <h2 style="margin:0 0 10px 0;">Erro ao iniciar a interface</h2>
+                <pre style="white-space:pre-wrap;word-break:break-word;margin:0;background:#fff7ed;padding:10px;border-radius:8px;border:1px solid #fed7aa;">${String((error && (error.stack || error.message)) || error)}</pre>
+            </div>
+        `;
+    }
+    console.error('Falha ao montar App:', error);
+}

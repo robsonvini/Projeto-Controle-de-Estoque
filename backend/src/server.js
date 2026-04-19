@@ -12,13 +12,19 @@ const PDFDocument = require('pdfkit');
 const pdfParse = require('pdf-parse');
 
 const { authenticateToken, comparePassword, hashPassword, signToken } = require('./auth');
-const { readDb, writeDb } = require('./db');
+const { readDb, writeDb, DB_PATH } = require('./db');
+const { loadConfig, saveConfig, ensureBackupsDir, DEFAULT_CONFIG } = require('./config');
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
 const host = process.env.HOST || '0.0.0.0';
 const projectRoot = path.resolve(__dirname, '../..');
 const upload = multer({ storage: multer.memoryStorage() });
+
+let appConfig = { ...DEFAULT_CONFIG };
+let BACKUPS_DIR = appConfig.backupsDir;
+let MAX_BACKUPS = appConfig.maxBackups;
+let BACKUP_INTERVAL_MS = appConfig.backupIntervalHours * 60 * 60 * 1000;
 
 const xmlParser = new XMLParser({
     ignoreAttributes: false,
@@ -132,6 +138,7 @@ function getFieldValue(source, candidates) {
 
 function toProductPayload(input) {
     const nome = normalizeText(getFieldValue(input, ['nome', 'name', 'produto']));
+    const patrimonio = normalizeText(getFieldValue(input, ['patrimonio', 'patrimônio', 'numeroPatrimonio', 'numero_patrimonio', 'assetNumber', 'asset_number']));
     const categoria = normalizeCategory(getFieldValue(input, ['categoria', 'category']));
     const quantidade = parseFlexibleNumber(getFieldValue(input, ['quantidade', 'quantity', 'qtd']), NaN);
     const preco = parseFlexibleNumber(getFieldValue(input, ['preco', 'price', 'preço']), NaN);
@@ -151,11 +158,27 @@ function toProductPayload(input) {
 
     return {
         nome,
+        patrimonio,
         categoria,
         quantidade: Math.trunc(quantidade),
         preco: Number(preco.toFixed(2)),
         descricao
     };
+}
+
+function findPatrimonioCollision(products, patrimonio, excludedProductId = null) {
+    const patrimonioText = normalizeText(patrimonio).toLowerCase();
+    if (!patrimonioText) {
+        return null;
+    }
+
+    return products.find((item) => {
+        if (excludedProductId && Number(item.id) === Number(excludedProductId)) {
+            return false;
+        }
+
+        return normalizeText(item.patrimonio).toLowerCase() === patrimonioText;
+    }) || null;
 }
 
 function normalizeProductsList(items) {
@@ -174,6 +197,7 @@ function createProductRecord(input, userId, existing = null) {
         id: existing?.id || Date.now(),
         userId,
         ...payload,
+        patrimonio: payload.patrimonio || existing?.patrimonio || '',
         dataCriacao: existing?.dataCriacao || formatDateBR(now),
         dataAtualizacao: formatDateBR(now),
         createdAt: existing?.createdAt || now,
@@ -245,6 +269,95 @@ async function loadUserState(userId) {
         products: db.products.filter((item) => item.userId === userId),
         movements: db.movements.filter((item) => item.userId === userId)
     };
+}
+
+async function createBackup() {
+    try {
+        await fs.mkdir(BACKUPS_DIR, { recursive: true });
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const backupName = `db-backup-${timestamp}.json`;
+        const backupPath = path.join(BACKUPS_DIR, backupName);
+        
+        const content = await fs.readFile(DB_PATH, 'utf8');
+        await fs.writeFile(backupPath, content, 'utf8');
+        
+        console.log(`✓ Backup criado: ${backupName}`);
+        await cleanOldBackups();
+        return { success: true, backupName };
+    } catch (error) {
+        console.error('✗ Erro ao criar backup:', error.message);
+        return { success: false, error: error.message };
+    }
+}
+
+async function cleanOldBackups() {
+    try {
+        const files = await fs.readdir(BACKUPS_DIR);
+        const backupFiles = files
+            .filter((f) => f.startsWith('db-backup-') && f.endsWith('.json'))
+            .sort()
+            .reverse();
+
+        if (backupFiles.length > MAX_BACKUPS) {
+            const filesToRemove = backupFiles.slice(MAX_BACKUPS);
+            for (const file of filesToRemove) {
+                await fs.unlink(path.join(BACKUPS_DIR, file));
+            }
+            console.log(`✓ Removidos ${filesToRemove.length} backup(s) antigo(s)`);
+        }
+    } catch (error) {
+        console.error('✗ Erro ao limpar backups antigos:', error.message);
+    }
+}
+
+async function listBackups() {
+    try {
+        await fs.mkdir(BACKUPS_DIR, { recursive: true });
+        const files = await fs.readdir(BACKUPS_DIR);
+        const backupFiles = files
+            .filter((f) => f.startsWith('db-backup-') && f.endsWith('.json'))
+            .sort()
+            .reverse();
+
+        const backups = await Promise.all(
+            backupFiles.map(async (file) => {
+                const filePath = path.join(BACKUPS_DIR, file);
+                const stat = await fs.stat(filePath);
+                return {
+                    filename: file,
+                    size: stat.size,
+                    createdAt: stat.mtime.toISOString()
+                };
+            })
+        );
+
+        return backups;
+    } catch (error) {
+        console.error('✗ Erro ao listar backups:', error.message);
+        return [];
+    }
+}
+
+async function restoreBackup(filename) {
+    try {
+        const backupPath = path.join(BACKUPS_DIR, filename);
+        
+        const files = await fs.readdir(BACKUPS_DIR);
+        if (!files.includes(filename) || !filename.startsWith('db-backup-') || !filename.endsWith('.json')) {
+            throw new Error('Arquivo de backup inválido.');
+        }
+
+        const backupContent = await fs.readFile(backupPath, 'utf8');
+        JSON.parse(backupContent);
+        
+        await fs.writeFile(DB_PATH, backupContent, 'utf8');
+        console.log(`✓ Backup restaurado: ${filename}`);
+        
+        return { success: true, message: `Backup ${filename} restaurado com sucesso.` };
+    } catch (error) {
+        console.error('✗ Erro ao restaurar backup:', error.message);
+        return { success: false, error: error.message };
+    }
 }
 
 app.get('/api/health', (req, res) => {
@@ -369,6 +482,13 @@ app.post('/api/products', authenticateToken, async (req, res) => {
     try {
         const db = await readDb();
         const userProducts = db.products.filter((item) => item.userId === req.auth.id);
+        const patrimonio = normalizeText(req.body?.patrimonio);
+
+        const collision = findPatrimonioCollision(userProducts, patrimonio);
+        if (collision) {
+            throw buildError('Já existe um produto com esse número de patrimônio.', 409);
+        }
+
         const product = createProductRecord(req.body, req.auth.id);
 
         db.products = db.products.filter((item) => item.userId !== req.auth.id);
@@ -389,6 +509,14 @@ app.put('/api/products/:id', authenticateToken, async (req, res) => {
 
         if (!product) {
             throw buildError('Produto não encontrado.', 404);
+        }
+
+        const patrimonio = normalizeText(req.body?.patrimonio);
+
+        const userProducts = db.products.filter((item) => item.userId === req.auth.id);
+        const collision = findPatrimonioCollision(userProducts, patrimonio, productId);
+        if (collision) {
+            throw buildError('Já existe um produto com esse número de patrimônio.', 409);
         }
 
         const updated = createProductRecord(req.body, req.auth.id, product);
@@ -599,21 +727,54 @@ app.post('/api/products/:id/movements', authenticateToken, async (req, res) => {
 
 async function buildProductsWorkbook(userId) {
     const { products } = await loadUserState(userId);
-    const rows = products.map((product) => ({
-        ID: product.id,
-        Nome: product.nome,
-        Categoria: product.categoria,
-        Quantidade: product.quantidade,
-        Preco: product.preco,
-        Descricao: product.descricao || '',
-        DataCriacao: product.dataCriacao || '',
-        DataAtualizacao: product.dataAtualizacao || ''
-    }));
+    // Evita que textos começando com =, +, -, @ sejam interpretados como fórmulas no Excel.
+    const toSafeExcelText = (value) => {
+        const text = String(value ?? '').trim();
+        if (!text) {
+            return '';
+        }
 
-    const worksheet = XLSX.utils.json_to_sheet(rows);
+        return /^[=+\-@]/.test(text) ? `'${text}` : text;
+    };
+
+    const rows = products.map((product) => {
+        const id = Number(product.id);
+        const quantidade = Number(product.quantidade);
+        const preco = Number(product.preco);
+
+        return [
+            Number.isFinite(id) ? id : toSafeExcelText(product.id),
+            toSafeExcelText(product.nome),
+            toSafeExcelText(product.patrimonio || 'Sem patrimônio'),
+            toSafeExcelText(product.categoria),
+            Number.isFinite(quantidade) ? quantidade : 0,
+            Number.isFinite(preco) ? Number(preco.toFixed(2)) : 0,
+            toSafeExcelText(product.descricao),
+            toSafeExcelText(product.dataCriacao),
+            toSafeExcelText(product.dataAtualizacao)
+        ];
+    });
+
+    const worksheet = XLSX.utils.aoa_to_sheet([
+        ['ID', 'Nome', 'Patrimonio', 'Categoria', 'Quantidade', 'Preco', 'Descricao', 'DataCriacao', 'DataAtualizacao'],
+        ...rows
+    ]);
+
+    worksheet['!cols'] = [
+        { wch: 12 },
+        { wch: 28 },
+        { wch: 20 },
+        { wch: 22 },
+        { wch: 12 },
+        { wch: 12 },
+        { wch: 40 },
+        { wch: 16 },
+        { wch: 16 }
+    ];
+
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Produtos');
-    return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+    return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx', compression: true });
 }
 
 function buildProductsPdf(products) {
@@ -632,6 +793,7 @@ function buildProductsPdf(products) {
 
         const columns = [
             { label: 'Nome', key: 'nome', width: 170 },
+            { label: 'Patrim.', key: 'patrimonio', width: 100 },
             { label: 'Categoria', key: 'categoria', width: 100 },
             { label: 'Qtd.', key: 'quantidade', width: 50 },
             { label: 'Preço', key: 'preco', width: 80 },
@@ -668,6 +830,7 @@ function buildProductsPdf(products) {
         products.forEach((product) => {
             drawRow([
                 product.nome,
+                product.patrimonio || 'Sem patrimônio',
                 product.categoria,
                 product.quantidade,
                 Number(product.preco || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
@@ -706,10 +869,181 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(projectRoot, 'index.html'));
 });
 
+app.get('/api/backups', authenticateToken, async (req, res) => {
+    try {
+        const backups = await listBackups();
+        res.json({ backups });
+    } catch (error) {
+        sendError(res, error);
+    }
+});
+
+app.post('/api/backups/create-now', authenticateToken, async (req, res) => {
+    try {
+        const result = await createBackup();
+        if (result.success) {
+            res.status(201).json({ message: `Backup ${result.backupName} criado com sucesso.`, backupName: result.backupName });
+        } else {
+            throw buildError(result.error || 'Erro ao criar backup.');
+        }
+    } catch (error) {
+        sendError(res, error);
+    }
+});
+
+app.post('/api/backups/export', authenticateToken, async (req, res) => {
+    try {
+        const db = await readDb();
+        const backupName = `backup-manual-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+        const content = JSON.stringify(db, null, 2);
+
+        res.setHeader('Content-Type', 'application/json; charset=utf-8');
+        res.setHeader('Content-Disposition', `attachment; filename="${backupName}"`);
+        res.send(content);
+    } catch (error) {
+        sendError(res, error);
+    }
+});
+
+app.post('/api/backups/restore', authenticateToken, async (req, res) => {
+    try {
+        const filename = String(req.body?.filename || '').trim();
+        if (!filename) {
+            throw buildError('Informe o nome do arquivo de backup.');
+        }
+
+        const result = await restoreBackup(filename);
+        if (result.success) {
+            res.json(result);
+        } else {
+            throw buildError(result.error || 'Erro ao restaurar backup.');
+        }
+    } catch (error) {
+        sendError(res, error);
+    }
+});
+
+app.get('/api/backups/config', authenticateToken, async (req, res) => {
+    try {
+        res.json({
+            backupsDir: appConfig.backupsDir,
+            maxBackups: appConfig.maxBackups,
+            backupIntervalHours: appConfig.backupIntervalHours
+        });
+    } catch (error) {
+        sendError(res, error);
+    }
+});
+
+app.put('/api/backups/config', authenticateToken, async (req, res) => {
+    try {
+        const backupsDir = String(req.body?.backupsDir || '').trim();
+        const maxBackups = Number(req.body?.maxBackups);
+        const backupIntervalHours = Number(req.body?.backupIntervalHours);
+
+        if (!backupsDir) {
+            throw buildError('Informe um caminho válido para os backups.');
+        }
+
+        if (!Number.isFinite(maxBackups) || maxBackups < 1 || maxBackups > 100) {
+            throw buildError('Máximo de backups deve estar entre 1 e 100.');
+        }
+
+        if (!Number.isFinite(backupIntervalHours) || backupIntervalHours < 0.5 || backupIntervalHours > 24) {
+            throw buildError('Intervalo de backup deve estar entre 0.5 e 24 horas.');
+        }
+
+        const ensured = await ensureBackupsDir(backupsDir);
+        if (!ensured) {
+            throw buildError('Não foi possível acessar ou criar o diretório de backups.');
+        }
+
+        appConfig = {
+            backupsDir,
+            maxBackups,
+            backupIntervalHours
+        };
+
+        await saveConfig(appConfig);
+        BACKUPS_DIR = appConfig.backupsDir;
+        MAX_BACKUPS = appConfig.maxBackups;
+        BACKUP_INTERVAL_MS = appConfig.backupIntervalHours * 60 * 60 * 1000;
+
+        res.json({
+            message: 'Configuração atualizada com sucesso.',
+            config: appConfig
+        });
+    } catch (error) {
+        sendError(res, error);
+    }
+});
+
+app.get('/api/backups/browse', authenticateToken, async (req, res) => {
+    try {
+        let dirPath = String(req.query?.path || '').trim();
+        
+        if (!dirPath) {
+            if (process.platform === 'win32') {
+                dirPath = path.resolve('C:\\');
+            } else {
+                dirPath = path.resolve('/home');
+            }
+        }
+
+        dirPath = path.resolve(dirPath);
+
+        const entries = await fs.readdir(dirPath, { withFileTypes: true });
+        const folders = entries
+            .filter(entry => entry.isDirectory() && !entry.name.startsWith('.'))
+            .map(entry => ({
+                name: entry.name,
+                path: path.join(dirPath, entry.name)
+            }))
+            .sort((a, b) => a.name.localeCompare(b.name));
+
+        const parentPath = path.dirname(dirPath);
+        const canGoUp = parentPath !== dirPath;
+
+        res.json({
+            currentPath: dirPath,
+            parentPath: canGoUp ? parentPath : null,
+            folders
+        });
+    } catch (error) {
+        sendError(res, buildError('Erro ao navegar pastas: ' + error.message));
+    }
+});
+
+app.get('/', (req, res) => {
+    res.sendFile(path.join(projectRoot, 'index.html'));
+});
+
 app.use((error, req, res, next) => {
     sendError(res, error);
 });
 
-app.listen(port, host, () => {
-    console.log(`API do controle de estoque em http://${host}:${port}`);
-});
+(async () => {
+    try {
+        appConfig = await loadConfig();
+        BACKUPS_DIR = appConfig.backupsDir;
+        MAX_BACKUPS = appConfig.maxBackups;
+        BACKUP_INTERVAL_MS = appConfig.backupIntervalHours * 60 * 60 * 1000;
+        await ensureBackupsDir(BACKUPS_DIR);
+    } catch (error) {
+        console.error('Erro ao carregar configuração:', error.message);
+        process.exit(1);
+    }
+
+    app.listen(port, host, () => {
+        console.log(`API do controle de estoque em http://${host}:${port}`);
+        console.log(`📁 Backups salvos em: ${BACKUPS_DIR}`);
+        
+        createBackup();
+        const backupInterval = setInterval(createBackup, BACKUP_INTERVAL_MS);
+        
+        process.on('SIGINT', () => {
+            clearInterval(backupInterval);
+            process.exit(0);
+        });
+    });
+})();
