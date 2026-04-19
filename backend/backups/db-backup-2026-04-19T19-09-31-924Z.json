@@ -11,6 +11,20 @@
   ],
   "products": [
     {
+      "id": 1776624436343,
+      "userId": 1775675197663,
+      "nome": "Elástico",
+      "patrimonio": "",
+      "categoria": "Material de escritório",
+      "quantidade": 20,
+      "preco": 10,
+      "descricao": "",
+      "dataCriacao": "19/04/2026",
+      "dataAtualizacao": "19/04/2026",
+      "createdAt": "2026-04-19T18:47:16.343Z",
+      "updatedAt": "2026-04-19T18:48:13.917Z"
+    },
+    {
       "id": 1776595922275,
       "userId": 1775675197663,
       "nome": "Computador",
@@ -59,6 +73,18 @@
     }
   ],
   "movements": [
+    {
+      "id": 1776624493917,
+      "userId": 1775675197663,
+      "productId": 1776624436343,
+      "productName": "Elástico",
+      "type": "entrada",
+      "quantity": 10,
+      "reason": "Compra",
+      "previousStock": 10,
+      "newStock": 20,
+      "createdAt": "2026-04-19T18:48:13.917Z"
+    },
     {
       "id": 1775959114343,
       "userId": 1775675197663,

@@ -764,6 +764,22 @@ header .subtitle {
     margin-bottom: 0;
 }
 
+.movement-selected-product {
+    margin-top: 10px;
+    padding: 9px 11px;
+    border-radius: 8px;
+    border: 1px solid #cbd5e1;
+    background: #f8fafc;
+    color: #334155;
+    font-size: 0.88rem;
+    font-weight: 600;
+}
+
+.movement-selected-product strong {
+    color: #0f172a;
+    font-weight: 800;
+}
+
 .movement-period-hint {
     margin-top: 10px;
     padding: 10px 12px;
@@ -842,7 +858,7 @@ header .subtitle {
 .movement-table {
     width: 100%;
     border-collapse: collapse;
-    min-width: 700px;
+    min-width: 860px;
 }
 
 .movement-table th,
@@ -990,6 +1006,21 @@ header .subtitle {
     gap: 12px;
     align-items: center;
     margin-bottom: 20px;
+}
+
+.backup-schedule-panel {
+    margin-bottom: 18px;
+    padding: 14px;
+    border-radius: 10px;
+    border: 1px solid #cbd5e1;
+    background: #f8fafc;
+}
+
+.backup-config-actions {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 12px;
+    align-items: center;
 }
 
 .backup-create-hint {
@@ -1485,6 +1516,7 @@ textarea {
     display: flex;
     flex-direction: column;
     height: 100%;
+    color: #0f172a;
 }
 
 .product-card:hover {
@@ -1515,19 +1547,24 @@ textarea {
 
 .product-category {
     background: var(--primary-color);
-    color: white;
-    padding: 4px 12px;
+    color: #ffffff;
+    padding: 5px 12px;
     border-radius: 20px;
-    font-size: 0.8em;
-    font-weight: 600;
+    font-size: 0.86em;
+    font-weight: 700;
+    line-height: 1.2;
+    letter-spacing: 0.01em;
+    opacity: 1;
+    text-shadow: 0 1px 1px rgba(15, 23, 42, 0.28);
 }
 
 .product-category.Eletronicos { background: #4f46e5; }
 .product-category.Material-de-escritorio { background: #0f766e; }
 
 .product-description {
-    color: var(--text-light);
-    font-size: 0.9em;
+    color: #334155;
+    font-size: 0.94em;
+    font-weight: 500;
     margin-bottom: 14px;
     line-height: 1.4;
     min-height: 38px;
@@ -1549,16 +1586,25 @@ textarea {
 
 .info-label {
     font-size: 0.8em;
-    color: var(--text-light);
+    color: #334155;
     text-transform: uppercase;
-    font-weight: 600;
+    font-weight: 700;
     margin-bottom: 4px;
 }
 
 .info-value {
     font-size: 1.2em;
     font-weight: 700;
-    color: var(--text-dark);
+    color: #0f172a;
+}
+
+#productDetails {
+    color: #0f172a;
+}
+
+#productDetails .info-item > div:not(.info-label):not(.info-value):not(.product-category) {
+    color: #1e293b;
+    font-weight: 500;
 }
 
 .price {
@@ -1824,6 +1870,11 @@ footer {
 
     .dashboard-toolbar .btn {
         width: 100%;
+    }
+
+    .backup-config-actions,
+    .backup-create-row {
+        grid-template-columns: 1fr;
     }
 
     .password-field {

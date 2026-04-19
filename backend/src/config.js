@@ -6,7 +6,10 @@ const CONFIG_PATH = path.resolve(__dirname, '../config.json');
 const DEFAULT_CONFIG = {
     backupsDir: path.resolve(__dirname, '../backups'),
     maxBackups: 10,
-    backupIntervalHours: 1
+    backupIntervalHours: 1,
+    backupMode: 'manual',
+    backupScheduleDay: 1,
+    backupScheduleTime: '09:00'
 };
 
 async function loadConfig() {

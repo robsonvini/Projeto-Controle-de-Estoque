@@ -11,6 +11,48 @@
   ],
   "products": [
     {
+      "id": 1776631489123,
+      "userId": 1775675197663,
+      "nome": "Mouse Logitech",
+      "patrimonio": "",
+      "categoria": "Eletrônicos",
+      "quantidade": 4,
+      "preco": 80,
+      "descricao": "",
+      "dataCriacao": "19/04/2026",
+      "dataAtualizacao": "19/04/2026",
+      "createdAt": "2026-04-19T20:44:49.123Z",
+      "updatedAt": "2026-04-19T20:45:11.016Z"
+    },
+    {
+      "id": 1776630913320,
+      "userId": 1775675197663,
+      "nome": "Computador",
+      "patrimonio": "202.500",
+      "categoria": "Eletrônicos",
+      "quantidade": 1,
+      "preco": 1500,
+      "descricao": "Processador: I5 da 12ª geração",
+      "dataCriacao": "19/04/2026",
+      "dataAtualizacao": "19/04/2026",
+      "createdAt": "2026-04-19T20:35:13.320Z",
+      "updatedAt": "2026-04-19T20:36:53.936Z"
+    },
+    {
+      "id": 1776624436343,
+      "userId": 1775675197663,
+      "nome": "Elástico",
+      "patrimonio": "",
+      "categoria": "Material de escritório",
+      "quantidade": 10,
+      "preco": 10,
+      "descricao": "",
+      "dataCriacao": "19/04/2026",
+      "dataAtualizacao": "19/04/2026",
+      "createdAt": "2026-04-19T18:47:16.343Z",
+      "updatedAt": "2026-04-19T19:15:34.731Z"
+    },
+    {
       "id": 1776595922275,
       "userId": 1775675197663,
       "nome": "Computador",
@@ -59,6 +101,30 @@
     }
   ],
   "movements": [
+    {
+      "id": 1776626134732,
+      "userId": 1775675197663,
+      "productId": 1776624436343,
+      "productName": "Elástico",
+      "type": "saida",
+      "quantity": 10,
+      "reason": "Venda",
+      "previousStock": 20,
+      "newStock": 10,
+      "createdAt": "2026-04-19T19:15:34.732Z"
+    },
+    {
+      "id": 1776624493917,
+      "userId": 1775675197663,
+      "productId": 1776624436343,
+      "productName": "Elástico",
+      "type": "entrada",
+      "quantity": 10,
+      "reason": "Compra",
+      "previousStock": 10,
+      "newStock": 20,
+      "createdAt": "2026-04-19T18:48:13.917Z"
+    },
     {
       "id": 1775959114343,
       "userId": 1775675197663,

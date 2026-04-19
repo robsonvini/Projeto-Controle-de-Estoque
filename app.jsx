@@ -2,6 +2,15 @@ const { useEffect, useMemo, useRef, useState } = React;
 
 const PRODUCT_CATEGORIES = ['Eletrônicos', 'Material de escritório'];
 const PRODUCT_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#14b8a6'];
+const BACKUP_SCHEDULE_DAYS = [
+    { value: '0', label: 'Domingo' },
+    { value: '1', label: 'Segunda-feira' },
+    { value: '2', label: 'Terça-feira' },
+    { value: '3', label: 'Quarta-feira' },
+    { value: '4', label: 'Quinta-feira' },
+    { value: '5', label: 'Sexta-feira' },
+    { value: '6', label: 'Sábado' }
+];
 const MIN_STOCK_THRESHOLD = 2;
 const SESSION_KEY = 'estoqueSession';
 const SESSION_30_MIN = 30 * 60 * 1000;
@@ -155,6 +164,17 @@ class ApiClient {
 
     getBackups() {
         return this.request('/backups', { method: 'GET' }, true);
+    }
+
+    getBackupConfig() {
+        return this.request('/backups/config', { method: 'GET' }, true);
+    }
+
+    updateBackupConfig(config) {
+        return this.request('/backups/config', {
+            method: 'PUT',
+            body: JSON.stringify(config)
+        }, true);
     }
 
     createBackup() {
@@ -602,6 +622,12 @@ function App() {
     const [exportingKpiPdf, setExportingKpiPdf] = useState(false);
     const [backups, setBackups] = useState([]);
     const [loadingBackups, setLoadingBackups] = useState(false);
+    const [savingBackupConfig, setSavingBackupConfig] = useState(false);
+    const [backupConfig, setBackupConfig] = useState({
+        backupMode: 'manual',
+        backupScheduleDay: '1',
+        backupScheduleTime: '09:00'
+    });
     const [activeView, setActiveView] = useState('inventory');
     const [dashboardPeriod, setDashboardPeriod] = useState('all');
     const [showExportMenu, setShowExportMenu] = useState(false);
@@ -634,12 +660,13 @@ function App() {
     const [dashboardTick, setDashboardTick] = useState(0);
     const [now, setNow] = useState(() => new Date());
     const [movementForm, setMovementForm] = useState({
+        category: '',
         productId: '',
         type: 'entrada',
         quantity: 1,
         reason: ''
     });
-    const [movementFilter, setMovementFilter] = useState({ productId: '', type: '', period: 'all', order: 'recent' });
+    const [movementFilter, setMovementFilter] = useState({ productId: '', category: '', type: '', period: 'all', order: 'recent' });
 
     const showApp = Boolean(token && session && session.expiraEm && Date.now() < session.expiraEm);
 
@@ -738,8 +765,17 @@ function App() {
         const loadBackupsData = async () => {
             try {
                 setLoadingBackups(true);
-                const result = await api.getBackups();
+                const [result, config] = await Promise.all([
+                    api.getBackups(),
+                    api.getBackupConfig()
+                ]);
                 setBackups(result.backups || []);
+                setBackupConfig((current) => ({
+                    ...current,
+                    backupMode: String(config?.backupMode || 'manual'),
+                    backupScheduleDay: String(config?.backupScheduleDay ?? '1'),
+                    backupScheduleTime: String(config?.backupScheduleTime || '09:00')
+                }));
             } catch (error) {
                 if (error.status !== 401) {
                     console.error('Erro ao carregar backups:', error.message);
@@ -871,11 +907,23 @@ function App() {
         [products]
     );
 
+    const movementCategoryByProductId = useMemo(
+        () => new Map(products.map((item) => [String(item.id), item.categoria || 'Não informada'])),
+        [products]
+    );
+
     const filteredMovements = useMemo(() => {
         let list = [...movements];
 
         if (movementFilter.productId) {
             list = list.filter((item) => String(item.productId) === String(movementFilter.productId));
+        }
+
+        if (movementFilter.category) {
+            list = list.filter((item) => {
+                const category = movementCategoryByProductId.get(String(item.productId));
+                return category === movementFilter.category;
+            });
         }
 
         if (movementFilter.type) {
@@ -916,7 +964,7 @@ function App() {
         });
 
         return list;
-    }, [movements, movementFilter]);
+    }, [movements, movementFilter, movementCategoryByProductId]);
 
     const movementSummary = useMemo(() => {
         const total = filteredMovements.length;
@@ -930,6 +978,55 @@ function App() {
 
         return { total, entries, exits, todayCount };
     }, [filteredMovements]);
+
+    const selectedMovementProduct = useMemo(
+        () => products.find((item) => String(item.id) === String(movementForm.productId)) || null,
+        [products, movementForm.productId]
+    );
+
+    const movementProductsByCategory = useMemo(() => {
+        if (!movementForm.category) {
+            return [];
+        }
+
+        return products.filter((item) => item.categoria === movementForm.category);
+    }, [products, movementForm.category]);
+
+    const movementFilterProductsByCategory = useMemo(() => {
+        if (!movementFilter.category) {
+            return products;
+        }
+
+        return products.filter((item) => item.categoria === movementFilter.category);
+    }, [products, movementFilter.category]);
+
+    useEffect(() => {
+        if (!movementForm.productId) {
+            return;
+        }
+
+        const existsInCategory = movementProductsByCategory.some(
+            (item) => String(item.id) === String(movementForm.productId)
+        );
+
+        if (!existsInCategory) {
+            setMovementForm((current) => ({ ...current, productId: '' }));
+        }
+    }, [movementProductsByCategory, movementForm.productId]);
+
+    useEffect(() => {
+        if (!movementFilter.productId) {
+            return;
+        }
+
+        const existsInCategory = movementFilterProductsByCategory.some(
+            (item) => String(item.id) === String(movementFilter.productId)
+        );
+
+        if (!existsInCategory) {
+            setMovementFilter((current) => ({ ...current, productId: '' }));
+        }
+    }, [movementFilterProductsByCategory, movementFilter.productId]);
 
     const movementPeriodLabel = useMemo(() => {
         if (!movementFilter.period || movementFilter.period === 'all') {
@@ -1473,6 +1570,29 @@ function App() {
         }
     }
 
+    async function handleSaveBackupConfig(event) {
+        event.preventDefault();
+
+        if (backupConfig.backupMode === 'automatic' && !backupConfig.backupScheduleTime) {
+            notify('Informe um horário para o backup automático.', 'error');
+            return;
+        }
+
+        try {
+            setSavingBackupConfig(true);
+            await api.updateBackupConfig({
+                backupMode: backupConfig.backupMode,
+                backupScheduleDay: Number(backupConfig.backupScheduleDay),
+                backupScheduleTime: backupConfig.backupScheduleTime
+            });
+            notify('Configuração de backup salva com sucesso!', 'success');
+        } catch (error) {
+            notify(error.message || 'Erro ao salvar configuração de backup.', 'error');
+        } finally {
+            setSavingBackupConfig(false);
+        }
+    }
+
     async function handleRestoreBackup(filename) {
         if (!confirm(`Deseja restaurar o backup "${filename}"? Os dados atuais serão sobrescrito.`)) return;
 
@@ -1896,20 +2016,46 @@ function App() {
                                 <div className="movement-layout">
                                     <form className="movement-form" onSubmit={handleCreateMovement}>
                                         <div className="form-group">
+                                            <label htmlFor="movementCategory">Categoria</label>
+                                            <select
+                                                id="movementCategory"
+                                                value={movementForm.category}
+                                                onChange={(event) => setMovementForm((current) => ({ ...current, category: event.target.value, productId: '' }))}
+                                                required
+                                            >
+                                                <option value="">Selecione uma categoria</option>
+                                                {PRODUCT_CATEGORIES.map((category) => (
+                                                    <option value={category} key={`movement_form_category_${category}`}>{category}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+
+                                        <div className="form-group">
                                             <label htmlFor="movementProduct">Produto</label>
                                             <select
                                                 id="movementProduct"
                                                 value={movementForm.productId}
                                                 onChange={(event) => setMovementForm((current) => ({ ...current, productId: event.target.value }))}
+                                                disabled={!movementForm.category}
                                                 required
                                             >
-                                                {products.length === 0 ? <option value="">Nenhum produto disponível</option> : null}
-                                                {products.map((product) => (
+                                                {!movementForm.category ? <option value="">Selecione uma categoria primeiro</option> : null}
+                                                {movementForm.category && movementProductsByCategory.length === 0 ? <option value="">Nenhum produto nessa categoria</option> : null}
+                                                {movementProductsByCategory.map((product) => (
                                                     <option value={String(product.id)} key={product.id}>
-                                                        {product.nome} (estoque: {Number(product.quantidade) || 0})
+                                                        {product.nome}
+                                                        {product.patrimonio ? ` | Patrimônio: ${product.patrimonio}` : ''}
+                                                        {` - ${product.categoria} (estoque: ${Number(product.quantidade) || 0})`}
                                                     </option>
                                                 ))}
                                             </select>
+                                            {selectedMovementProduct ? (
+                                                <p className="movement-selected-product">
+                                                    Categoria: <strong>{selectedMovementProduct.categoria}</strong>
+                                                    {selectedMovementProduct.patrimonio ? <> | Patrimônio: <strong>{selectedMovementProduct.patrimonio}</strong></> : ''}
+                                                    {' '}| Estoque atual: <strong>{Number(selectedMovementProduct.quantidade) || 0}</strong>
+                                                </p>
+                                            ) : null}
                                         </div>
 
                                         <div className="form-row">
@@ -1964,8 +2110,26 @@ function App() {
                                                 onChange={(event) => setMovementFilter((current) => ({ ...current, productId: event.target.value }))}
                                             >
                                                 <option value="">Todos os produtos</option>
-                                                {products.map((product) => (
-                                                    <option value={String(product.id)} key={`filter_${product.id}`}>{product.nome}</option>
+                                                {movementFilter.category && movementFilterProductsByCategory.length === 0 ? <option value="">Nenhum produto nessa categoria</option> : null}
+                                                {movementFilterProductsByCategory.map((product) => (
+                                                    <option value={String(product.id)} key={`filter_${product.id}`}>
+                                                        {product.nome}
+                                                        {product.patrimonio ? ` | Patrimônio: ${product.patrimonio}` : ''}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
+
+                                        <div className="form-group">
+                                            <label htmlFor="movementFilterCategory">Categoria</label>
+                                            <select
+                                                id="movementFilterCategory"
+                                                value={movementFilter.category}
+                                                onChange={(event) => setMovementFilter((current) => ({ ...current, category: event.target.value, productId: '' }))}
+                                            >
+                                                <option value="">Todas as categorias</option>
+                                                {PRODUCT_CATEGORIES.map((category) => (
+                                                    <option value={category} key={`movement_category_${category}`}>{category}</option>
                                                 ))}
                                             </select>
                                         </div>
@@ -2015,7 +2179,7 @@ function App() {
                                             <button
                                                 type="button"
                                                 className="btn btn-secondary"
-                                                onClick={() => setMovementFilter({ productId: '', type: '', period: 'all', order: 'recent' })}
+                                                onClick={() => setMovementFilter({ productId: '', category: '', type: '', period: 'all', order: 'recent' })}
                                             >
                                                 Limpar filtros
                                             </button>
@@ -2050,6 +2214,7 @@ function App() {
                                                 <tr>
                                                     <th>Data e hora</th>
                                                     <th>Produto</th>
+                                                    <th>Categoria</th>
                                                     <th>Tipo</th>
                                                     <th>Qtd</th>
                                                     <th>Saldo</th>
@@ -2059,13 +2224,14 @@ function App() {
                                             <tbody>
                                                 {filteredMovements.length === 0 && !loadingMovements ? (
                                                     <tr>
-                                                        <td colSpan="6" className="movement-empty">Nenhuma movimentação registrada.</td>
+                                                        <td colSpan="7" className="movement-empty">Nenhuma movimentação registrada.</td>
                                                     </tr>
                                                 ) : null}
                                                 {filteredMovements.map((movement) => (
                                                     <tr key={movement.id}>
                                                         <td>{formatDate(movement.createdAt)}</td>
                                                         <td>{movement.productName}</td>
+                                                        <td>{movementCategoryByProductId.get(String(movement.productId)) || 'Não informada'}</td>
                                                         <td>
                                                             <span className={`movement-badge ${movement.type === 'entrada' ? 'entry' : 'exit'}`}>
                                                                 {movement.type === 'entrada' ? '▲ Entrada' : '▼ Saída'}
@@ -2086,6 +2252,61 @@ function App() {
                         <div className={`app-view ${activeView === 'backups' ? 'active' : ''}`} data-view="backups">
                             <section className="form-section">
                                 <h2>Backups do Sistema</h2>
+                                <form className="backup-schedule-panel" onSubmit={handleSaveBackupConfig}>
+                                    <div className="form-row">
+                                        <div className="form-group">
+                                            <label htmlFor="backupModeSelect">Modo de backup</label>
+                                            <select
+                                                id="backupModeSelect"
+                                                value={backupConfig.backupMode}
+                                                onChange={(event) => setBackupConfig((current) => ({ ...current, backupMode: event.target.value }))}
+                                            >
+                                                <option value="manual">Manual</option>
+                                                <option value="automatic">Automático programado</option>
+                                            </select>
+                                        </div>
+
+                                        {backupConfig.backupMode === 'automatic' ? (
+                                            <>
+                                                <div className="form-group">
+                                                    <label htmlFor="backupScheduleDay">Dia da semana</label>
+                                                    <select
+                                                        id="backupScheduleDay"
+                                                        value={backupConfig.backupScheduleDay}
+                                                        onChange={(event) => setBackupConfig((current) => ({ ...current, backupScheduleDay: event.target.value }))}
+                                                    >
+                                                        {BACKUP_SCHEDULE_DAYS.map((item) => (
+                                                            <option key={item.value} value={item.value}>{item.label}</option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+
+                                                <div className="form-group">
+                                                    <label htmlFor="backupScheduleTime">Horário</label>
+                                                    <input
+                                                        id="backupScheduleTime"
+                                                        type="time"
+                                                        value={backupConfig.backupScheduleTime}
+                                                        onChange={(event) => setBackupConfig((current) => ({ ...current, backupScheduleTime: event.target.value }))}
+                                                        required
+                                                    />
+                                                </div>
+                                            </>
+                                        ) : null}
+                                    </div>
+
+                                    <div className="backup-config-actions">
+                                        <button type="submit" className="btn btn-secondary" disabled={savingBackupConfig}>
+                                            {savingBackupConfig ? 'Salvando...' : 'Salvar configuração'}
+                                        </button>
+                                        <small className="backup-create-hint">
+                                            {backupConfig.backupMode === 'manual'
+                                                ? 'No modo manual, os backups acontecem somente ao clicar em Criar e Salvar Backup.'
+                                                : 'No modo automático, o sistema cria backup no dia e horário programados.'}
+                                        </small>
+                                    </div>
+                                </form>
+
                                 <div className="backup-create-row">
                                     <button
                                         type="button"

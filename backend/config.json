@@ -1,5 +1,8 @@
 {
   "backupsDir": "C:\\Users\\USER\\Desktop\\Projeto Controle de Estoque\\backend\\backups",
   "maxBackups": 1,
-  "backupIntervalHours": 1
+  "backupIntervalHours": 1,
+  "backupMode": "manual",
+  "backupScheduleDay": 1,
+  "backupScheduleTime": "09:00"
 }

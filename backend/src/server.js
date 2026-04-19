@@ -25,6 +25,11 @@ let appConfig = { ...DEFAULT_CONFIG };
 let BACKUPS_DIR = appConfig.backupsDir;
 let MAX_BACKUPS = appConfig.maxBackups;
 let BACKUP_INTERVAL_MS = appConfig.backupIntervalHours * 60 * 60 * 1000;
+let BACKUP_MODE = appConfig.backupMode;
+let BACKUP_SCHEDULE_DAY = appConfig.backupScheduleDay;
+let BACKUP_SCHEDULE_TIME = appConfig.backupScheduleTime;
+let backupScheduler = null;
+let lastScheduledBackupKey = '';
 
 const xmlParser = new XMLParser({
     ignoreAttributes: false,
@@ -72,6 +77,79 @@ function parseFlexibleNumber(value, fallback = NaN) {
 
     const parsed = Number(normalized.replace(/[^\d.-]/g, ''));
     return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function normalizeBackupMode(value) {
+    const mode = String(value || '').trim().toLowerCase();
+    return mode === 'automatic' ? 'automatic' : 'manual';
+}
+
+function normalizeScheduleDay(value) {
+    const day = Number(value);
+    return Number.isInteger(day) && day >= 0 && day <= 6 ? day : null;
+}
+
+function normalizeScheduleTime(value) {
+    const text = String(value || '').trim();
+    if (!/^\d{2}:\d{2}$/.test(text)) {
+        return null;
+    }
+
+    const [hoursText, minutesText] = text.split(':');
+    const hours = Number(hoursText);
+    const minutes = Number(minutesText);
+
+    if (!Number.isInteger(hours) || hours < 0 || hours > 23) {
+        return null;
+    }
+
+    if (!Number.isInteger(minutes) || minutes < 0 || minutes > 59) {
+        return null;
+    }
+
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+}
+
+function applyBackupRuntimeConfig(config) {
+    BACKUPS_DIR = config.backupsDir;
+    MAX_BACKUPS = config.maxBackups;
+    BACKUP_INTERVAL_MS = config.backupIntervalHours * 60 * 60 * 1000;
+    BACKUP_MODE = normalizeBackupMode(config.backupMode);
+    BACKUP_SCHEDULE_DAY = normalizeScheduleDay(config.backupScheduleDay) ?? DEFAULT_CONFIG.backupScheduleDay;
+    BACKUP_SCHEDULE_TIME = normalizeScheduleTime(config.backupScheduleTime) || DEFAULT_CONFIG.backupScheduleTime;
+}
+
+async function runScheduledBackupIfNeeded(now = new Date()) {
+    if (BACKUP_MODE !== 'automatic') {
+        return;
+    }
+
+    const currentDay = now.getDay();
+    const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    if (currentDay !== BACKUP_SCHEDULE_DAY || currentTime !== BACKUP_SCHEDULE_TIME) {
+        return;
+    }
+
+    const executionKey = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}-${currentTime}`;
+    if (lastScheduledBackupKey === executionKey) {
+        return;
+    }
+
+    lastScheduledBackupKey = executionKey;
+    await createBackup();
+}
+
+function startBackupScheduler() {
+    if (backupScheduler) {
+        clearInterval(backupScheduler);
+        backupScheduler = null;
+    }
+
+    backupScheduler = setInterval(() => {
+        runScheduledBackupIfNeeded().catch((error) => {
+            console.error('✗ Falha no agendamento de backup:', error.message);
+        });
+    }, 30 * 1000);
 }
 
 function buildError(message, status = 400) {
@@ -928,7 +1006,10 @@ app.get('/api/backups/config', authenticateToken, async (req, res) => {
         res.json({
             backupsDir: appConfig.backupsDir,
             maxBackups: appConfig.maxBackups,
-            backupIntervalHours: appConfig.backupIntervalHours
+            backupIntervalHours: appConfig.backupIntervalHours,
+            backupMode: BACKUP_MODE,
+            backupScheduleDay: BACKUP_SCHEDULE_DAY,
+            backupScheduleTime: BACKUP_SCHEDULE_TIME
         });
     } catch (error) {
         sendError(res, error);
@@ -937,9 +1018,31 @@ app.get('/api/backups/config', authenticateToken, async (req, res) => {
 
 app.put('/api/backups/config', authenticateToken, async (req, res) => {
     try {
-        const backupsDir = String(req.body?.backupsDir || '').trim();
-        const maxBackups = Number(req.body?.maxBackups);
-        const backupIntervalHours = Number(req.body?.backupIntervalHours);
+        const rawBackupsDir = req.body?.backupsDir;
+        const rawMaxBackups = req.body?.maxBackups;
+        const rawBackupIntervalHours = req.body?.backupIntervalHours;
+        const rawBackupMode = req.body?.backupMode;
+        const rawBackupScheduleDay = req.body?.backupScheduleDay;
+        const rawBackupScheduleTime = req.body?.backupScheduleTime;
+
+        const backupsDir = typeof rawBackupsDir === 'string'
+            ? String(rawBackupsDir).trim()
+            : appConfig.backupsDir;
+        const maxBackups = rawMaxBackups === undefined
+            ? appConfig.maxBackups
+            : Number(rawMaxBackups);
+        const backupIntervalHours = rawBackupIntervalHours === undefined
+            ? appConfig.backupIntervalHours
+            : Number(rawBackupIntervalHours);
+        const backupMode = rawBackupMode === undefined
+            ? normalizeBackupMode(appConfig.backupMode)
+            : normalizeBackupMode(rawBackupMode);
+        const backupScheduleDay = rawBackupScheduleDay === undefined
+            ? normalizeScheduleDay(appConfig.backupScheduleDay)
+            : normalizeScheduleDay(rawBackupScheduleDay);
+        const backupScheduleTime = rawBackupScheduleTime === undefined
+            ? normalizeScheduleTime(appConfig.backupScheduleTime)
+            : normalizeScheduleTime(rawBackupScheduleTime);
 
         if (!backupsDir) {
             throw buildError('Informe um caminho válido para os backups.');
@@ -953,6 +1056,16 @@ app.put('/api/backups/config', authenticateToken, async (req, res) => {
             throw buildError('Intervalo de backup deve estar entre 0.5 e 24 horas.');
         }
 
+        if (backupMode === 'automatic') {
+            if (backupScheduleDay === null) {
+                throw buildError('Selecione um dia válido para o agendamento automático.');
+            }
+
+            if (!backupScheduleTime) {
+                throw buildError('Selecione um horário válido para o agendamento automático.');
+            }
+        }
+
         const ensured = await ensureBackupsDir(backupsDir);
         if (!ensured) {
             throw buildError('Não foi possível acessar ou criar o diretório de backups.');
@@ -961,13 +1074,14 @@ app.put('/api/backups/config', authenticateToken, async (req, res) => {
         appConfig = {
             backupsDir,
             maxBackups,
-            backupIntervalHours
+            backupIntervalHours,
+            backupMode,
+            backupScheduleDay: backupScheduleDay ?? DEFAULT_CONFIG.backupScheduleDay,
+            backupScheduleTime: backupScheduleTime || DEFAULT_CONFIG.backupScheduleTime
         };
 
         await saveConfig(appConfig);
-        BACKUPS_DIR = appConfig.backupsDir;
-        MAX_BACKUPS = appConfig.maxBackups;
-        BACKUP_INTERVAL_MS = appConfig.backupIntervalHours * 60 * 60 * 1000;
+        applyBackupRuntimeConfig(appConfig);
 
         res.json({
             message: 'Configuração atualizada com sucesso.',
@@ -1025,9 +1139,7 @@ app.use((error, req, res, next) => {
 (async () => {
     try {
         appConfig = await loadConfig();
-        BACKUPS_DIR = appConfig.backupsDir;
-        MAX_BACKUPS = appConfig.maxBackups;
-        BACKUP_INTERVAL_MS = appConfig.backupIntervalHours * 60 * 60 * 1000;
+        applyBackupRuntimeConfig(appConfig);
         await ensureBackupsDir(BACKUPS_DIR);
     } catch (error) {
         console.error('Erro ao carregar configuração:', error.message);
@@ -1037,12 +1149,20 @@ app.use((error, req, res, next) => {
     app.listen(port, host, () => {
         console.log(`API do controle de estoque em http://${host}:${port}`);
         console.log(`📁 Backups salvos em: ${BACKUPS_DIR}`);
-        
-        createBackup();
-        const backupInterval = setInterval(createBackup, BACKUP_INTERVAL_MS);
+        console.log(`⚙️ Modo de backup: ${BACKUP_MODE === 'automatic' ? 'automático' : 'manual'}`);
+        if (BACKUP_MODE === 'automatic') {
+            console.log(`🗓️ Agendamento: dia ${BACKUP_SCHEDULE_DAY} às ${BACKUP_SCHEDULE_TIME}`);
+        }
+
+        startBackupScheduler();
+        runScheduledBackupIfNeeded().catch((error) => {
+            console.error('✗ Falha ao executar backup agendado na inicialização:', error.message);
+        });
         
         process.on('SIGINT', () => {
-            clearInterval(backupInterval);
+            if (backupScheduler) {
+                clearInterval(backupScheduler);
+            }
             process.exit(0);
         });
     });
