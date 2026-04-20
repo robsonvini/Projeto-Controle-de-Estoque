@@ -1631,6 +1631,77 @@ textarea {
     flex: 1;
 }
 
+.grouped-products-list {
+    margin-top: 4px;
+    display: grid;
+    gap: 12px;
+}
+
+.grouped-product-item {
+    border: 1px solid rgba(203, 213, 225, 0.9);
+    border-radius: 12px;
+    padding: 12px;
+    background: #f8fafc;
+}
+
+.grouped-product-item.low-stock {
+    border-color: rgba(245, 158, 11, 0.55);
+    background: #fff7ed;
+}
+
+.grouped-product-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+
+.grouped-product-tag {
+    font-size: 0.82em;
+    font-weight: 700;
+    color: #1e293b;
+    background: #e2e8f0;
+    border-radius: 999px;
+    padding: 4px 10px;
+}
+
+.grouped-product-stock {
+    font-size: 0.86em;
+    font-weight: 700;
+    color: var(--primary-color);
+}
+
+.grouped-product-stock.low {
+    color: var(--warning-color);
+}
+
+.grouped-product-description {
+    margin: 0 0 8px 0;
+    color: #334155;
+    font-size: 0.9em;
+    line-height: 1.35;
+}
+
+.grouped-product-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 14px;
+    margin-bottom: 10px;
+    color: #475569;
+    font-size: 0.84em;
+    font-weight: 600;
+}
+
+.grouped-product-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.grouped-product-actions button {
+    flex: 1;
+}
+
 .empty-state {
     text-align: center;
     padding: 60px 20px;

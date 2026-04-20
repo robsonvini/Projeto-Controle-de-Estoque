@@ -11,6 +11,20 @@
   ],
   "products": [
     {
+      "id": 1776640439990,
+      "userId": 1775675197663,
+      "nome": "Computador",
+      "patrimonio": "201.500",
+      "categoria": "Eletrônicos",
+      "quantidade": 1,
+      "preco": 1500,
+      "descricao": "Processador: AMD Ryzer 3200",
+      "dataCriacao": "19/04/2026",
+      "dataAtualizacao": "19/04/2026",
+      "createdAt": "2026-04-19T23:13:59.969Z",
+      "updatedAt": "2026-04-19T23:13:59.969Z"
+    },
+    {
       "id": 1776631489123,
       "userId": 1775675197663,
       "nome": "Mouse Logitech",
@@ -58,13 +72,13 @@
       "nome": "Computador",
       "patrimonio": "203.500",
       "categoria": "Eletrônicos",
-      "quantidade": 3,
+      "quantidade": 1,
       "preco": 2000,
-      "descricao": "",
+      "descricao": "Processador: I7 da 12ª geração",
       "dataCriacao": "19/04/2026",
       "dataAtualizacao": "19/04/2026",
       "createdAt": "2026-04-19T10:52:02.275Z",
-      "updatedAt": "2026-04-19T10:52:02.275Z"
+      "updatedAt": "2026-04-19T23:51:21.755Z"
     },
     {
       "id": 1775676352787,
@@ -101,6 +115,30 @@
     }
   ],
   "movements": [
+    {
+      "id": 1776642681755,
+      "userId": 1775675197663,
+      "productId": 1776595922275,
+      "productName": "Computador",
+      "type": "saida",
+      "quantity": 1,
+      "reason": "destinado para o setor Jurídico",
+      "previousStock": 2,
+      "newStock": 1,
+      "createdAt": "2026-04-19T23:51:21.755Z"
+    },
+    {
+      "id": 1776641973610,
+      "userId": 1775675197663,
+      "productId": 1776595922275,
+      "productName": "Computador",
+      "type": "saida",
+      "quantity": 1,
+      "reason": "destinado para o setor de compras",
+      "previousStock": 3,
+      "newStock": 2,
+      "createdAt": "2026-04-19T23:39:33.611Z"
+    },
     {
       "id": 1776626134732,
       "userId": 1775675197663,

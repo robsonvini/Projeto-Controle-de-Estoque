@@ -902,6 +902,73 @@ function App() {
         return list;
     }, [products, search, categoryFilter, sortOption, lowStockOnly]);
 
+    const groupedInventoryCards = useMemo(() => {
+        const groups = new Map();
+
+        filteredProducts.forEach((product) => {
+            const normalizedName = String(product.nome || '').trim().toLocaleLowerCase('pt-BR');
+            const key = normalizedName || `sem-nome-${product.id}`;
+
+            if (!groups.has(key)) {
+                groups.set(key, {
+                    key,
+                    nome: String(product.nome || 'Sem nome').trim() || 'Sem nome',
+                    items: [],
+                    totalQuantidade: 0,
+                    totalValor: 0,
+                    hasLowStock: false,
+                    categorias: new Set()
+                });
+            }
+
+            const group = groups.get(key);
+            const quantidade = Number(product.quantidade) || 0;
+            const preco = Number(product.preco) || 0;
+
+            group.items.push(product);
+            group.totalQuantidade += quantidade;
+            group.totalValor += quantidade * preco;
+            group.hasLowStock = group.hasLowStock || quantidade < MIN_STOCK_THRESHOLD;
+            group.categorias.add(product.categoria || 'Não informada');
+        });
+
+        const cards = Array.from(groups.values()).map((group) => {
+            const categorias = Array.from(group.categorias);
+            const categoriaPrincipal = categorias[0] || 'Não informada';
+
+            const sortedItems = [...group.items].sort((a, b) => {
+                const patrimonioA = String(a.patrimonio || '').toLocaleLowerCase('pt-BR');
+                const patrimonioB = String(b.patrimonio || '').toLocaleLowerCase('pt-BR');
+                return patrimonioA.localeCompare(patrimonioB, 'pt-BR');
+            });
+
+            return {
+                ...group,
+                categoriaPrincipal,
+                categorias,
+                items: sortedItems
+            };
+        });
+
+        cards.sort((a, b) => {
+            if (sortOption === 'quantity') {
+                return a.totalQuantidade - b.totalQuantidade;
+            }
+
+            if (sortOption === 'price') {
+                return a.totalValor - b.totalValor;
+            }
+
+            if (sortOption === 'category') {
+                return String(a.categoriaPrincipal || '').localeCompare(String(b.categoriaPrincipal || ''), 'pt-BR');
+            }
+
+            return String(a.nome || '').localeCompare(String(b.nome || ''), 'pt-BR');
+        });
+
+        return cards;
+    }, [filteredProducts, sortOption]);
+
     const lowStockProducts = useMemo(
         () => products.filter((item) => (Number(item.quantidade) || 0) < MIN_STOCK_THRESHOLD),
         [products]
@@ -909,6 +976,16 @@ function App() {
 
     const movementCategoryByProductId = useMemo(
         () => new Map(products.map((item) => [String(item.id), item.categoria || 'Não informada'])),
+        [products]
+    );
+
+    const movementPatrimonyByProductId = useMemo(
+        () => new Map(products.map((item) => [String(item.id), item.patrimonio || '-'])),
+        [products]
+    );
+
+    const movementDescriptionByProductId = useMemo(
+        () => new Map(products.map((item) => [String(item.id), item.descricao || '-'])),
         [products]
     );
 
@@ -1235,6 +1312,28 @@ function App() {
         }
     }
 
+    async function registerProductMovement(productId, payload, options = {}) {
+        const { resetForm = false, successMessage = 'Movimentação registrada com sucesso!' } = options;
+
+        try {
+            const result = await api.createMovement(productId, payload);
+            setProducts((current) => current.map((item) => (String(item.id) === String(result.product.id) ? result.product : item)));
+            setMovements((current) => [result.movement, ...current]);
+
+            if (resetForm) {
+                setMovementForm((current) => ({ ...current, quantity: 1, reason: '' }));
+            }
+
+            notify(successMessage, 'success');
+        } catch (error) {
+            if (error.status === 401) {
+                handleLogout('Sessão expirada. Entre novamente.');
+                return;
+            }
+            notify(error.message || 'Não foi possível registrar a movimentação.', 'error');
+        }
+    }
+
     async function handleCreateMovement(event) {
         event.preventDefault();
 
@@ -1250,19 +1349,7 @@ function App() {
             return;
         }
 
-        try {
-            const result = await api.createMovement(productId, payload);
-            setProducts((current) => current.map((item) => (item.id === result.product.id ? result.product : item)));
-            setMovements((current) => [result.movement, ...current]);
-            setMovementForm((current) => ({ ...current, quantity: 1, reason: '' }));
-            notify('Movimentação registrada com sucesso!', 'success');
-        } catch (error) {
-            if (error.status === 401) {
-                handleLogout('Sessão expirada. Entre novamente.');
-                return;
-            }
-            notify(error.message || 'Não foi possível registrar a movimentação.', 'error');
-        }
+        await registerProductMovement(productId, payload, { resetForm: true });
     }
 
     async function handleRegister(event) {
@@ -2214,6 +2301,8 @@ function App() {
                                                 <tr>
                                                     <th>Data e hora</th>
                                                     <th>Produto</th>
+                                                    <th>Patrimônio</th>
+                                                    <th>Descrição</th>
                                                     <th>Categoria</th>
                                                     <th>Tipo</th>
                                                     <th>Qtd</th>
@@ -2224,13 +2313,15 @@ function App() {
                                             <tbody>
                                                 {filteredMovements.length === 0 && !loadingMovements ? (
                                                     <tr>
-                                                        <td colSpan="7" className="movement-empty">Nenhuma movimentação registrada.</td>
+                                                        <td colSpan="9" className="movement-empty">Nenhuma movimentação registrada.</td>
                                                     </tr>
                                                 ) : null}
                                                 {filteredMovements.map((movement) => (
                                                     <tr key={movement.id}>
                                                         <td>{formatDate(movement.createdAt)}</td>
                                                         <td>{movement.productName}</td>
+                                                        <td>{movementPatrimonyByProductId.get(String(movement.productId)) || '-'}</td>
+                                                        <td>{movementDescriptionByProductId.get(String(movement.productId)) || '-'}</td>
                                                         <td>{movementCategoryByProductId.get(String(movement.productId)) || 'Não informada'}</td>
                                                         <td>
                                                             <span className={`movement-badge ${movement.type === 'entrada' ? 'entry' : 'exit'}`}>
@@ -2478,36 +2569,68 @@ function App() {
                             <section className="products-section">
                                 {loadingProducts ? <p className="empty-state">Carregando produtos...</p> : null}
                                 <div id="productsList" className="products-grid">
-                                    {filteredProducts.length === 0 ? null : filteredProducts.map((product) => {
-                                        const emBaixa = Number(product.quantidade) < MIN_STOCK_THRESHOLD;
+                                    {groupedInventoryCards.length === 0 ? null : groupedInventoryCards.map((group) => {
                                         return (
-                                            <div className={`product-card ${emBaixa ? 'low-stock' : ''}`} key={product.id} data-id={product.id} onClick={() => setDetailsProduct(product)}>
+                                            <div className={`product-card ${group.hasLowStock ? 'low-stock' : ''}`} key={group.key}>
                                                 <div className="product-header">
-                                                    <span className="product-name">{product.nome}</span>
-                                                    <span className={`product-category ${getCategoryClassName(product.categoria)}`}>{product.categoria}</span>
+                                                    <span className="product-name">{group.nome}</span>
+                                                    <span className={`product-category ${getCategoryClassName(group.categoriaPrincipal)}`}>
+                                                        {group.categorias.join(' • ')}
+                                                    </span>
                                                 </div>
-                                                <p className="product-description">Patrimônio: {product.patrimonio || 'Sem patrimônio'}</p>
-                                                {product.descricao ? <p className="product-description">{String(product.descricao).substring(0, 100)}</p> : null}
+
+                                                <p className="product-description">
+                                                    {group.items.length} registro(s) agrupado(s) neste card
+                                                </p>
+
                                                 <div className="product-info">
                                                     <div className="info-item">
-                                                        <div className="info-label">Quantidade</div>
-                                                        <div className={`info-value quantity ${emBaixa ? 'low' : ''}`}>{product.quantidade}</div>
+                                                        <div className="info-label">Quantidade total</div>
+                                                        <div className={`info-value quantity ${group.hasLowStock ? 'low' : ''}`}>{group.totalQuantidade}</div>
                                                     </div>
                                                     <div className="info-item">
-                                                        <div className="info-label">Preço</div>
-                                                        <div className="info-value price">{formatCurrency(product.preco)}</div>
+                                                        <div className="info-label">Valor total</div>
+                                                        <div className="info-value price">{formatCurrency(group.totalValor)}</div>
                                                     </div>
                                                 </div>
-                                                <div className="product-actions">
-                                                    <button className="btn btn-small btn-info" type="button" onClick={(event) => { event.stopPropagation(); setDetailsProduct(product); }}>Ver</button>
-                                                    <button className="btn btn-small btn-edit" type="button" onClick={(event) => { event.stopPropagation(); setEditingProduct(product); }}>Editar</button>
-                                                    <button className="btn btn-small btn-delete" type="button" onClick={(event) => { event.stopPropagation(); handleDeleteProduct(product.id); }}>Deletar</button>
+
+                                                <div className="grouped-products-list">
+                                                    {group.items.map((product) => {
+                                                        const emBaixa = Number(product.quantidade) < MIN_STOCK_THRESHOLD;
+                                                        return (
+                                                            <article className={`grouped-product-item ${emBaixa ? 'low-stock' : ''}`} key={product.id}>
+                                                                <div className="grouped-product-head">
+                                                                    <span className="grouped-product-tag">
+                                                                        Patrimônio: {product.patrimonio || 'Sem patrimônio'}
+                                                                    </span>
+                                                                    <span className={`grouped-product-stock ${emBaixa ? 'low' : ''}`}>
+                                                                        Qtd: {Number(product.quantidade) || 0}
+                                                                    </span>
+                                                                </div>
+
+                                                                <p className="grouped-product-description">
+                                                                    {product.descricao ? String(product.descricao).substring(0, 120) : 'Sem descrição'}
+                                                                </p>
+
+                                                                <div className="grouped-product-meta">
+                                                                    <span>Preço: {formatCurrency(product.preco)}</span>
+                                                                    <span>Categoria: {product.categoria || 'Não informada'}</span>
+                                                                </div>
+
+                                                                <div className="grouped-product-actions">
+                                                                    <button className="btn btn-small btn-info" type="button" onClick={() => setDetailsProduct(product)}>Ver</button>
+                                                                    <button className="btn btn-small btn-edit" type="button" onClick={() => setEditingProduct(product)}>Editar</button>
+                                                                    <button className="btn btn-small btn-delete" type="button" onClick={() => handleDeleteProduct(product.id)}>Deletar</button>
+                                                                </div>
+                                                            </article>
+                                                        );
+                                                    })}
                                                 </div>
                                             </div>
                                         );
                                     })}
                                 </div>
-                                {filteredProducts.length === 0 && !loadingProducts ? <div id="emptyState" className="empty-state"><p>📋 Nenhum produto cadastrado. Adicione um produto acima!</p></div> : null}
+                                {groupedInventoryCards.length === 0 && !loadingProducts ? <div id="emptyState" className="empty-state"><p>📋 Nenhum produto cadastrado. Adicione um produto acima!</p></div> : null}
                             </section>
                         </div>
                     </main>
