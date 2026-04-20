@@ -105,13 +105,15 @@
     {
       "id": 1775681960676,
       "userId": 1775675197663,
-      "nome": "PC Gamer",
+      "nome": "Computador",
       "categoria": "Eletrônicos",
       "quantidade": 1,
       "preco": 6000,
-      "descricao": "",
+      "descricao": "Processador: I9 da 12ª geração",
       "dataCriacao": "08/04/2026",
-      "dataAtualizacao": "11/04/2026"
+      "dataAtualizacao": "19/04/2026",
+      "patrimonio": "210.500",
+      "updatedAt": "2026-04-20T02:58:48.271Z"
     }
   ],
   "movements": [

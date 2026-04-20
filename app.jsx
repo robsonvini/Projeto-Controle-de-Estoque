@@ -667,6 +667,9 @@ function App() {
         reason: ''
     });
     const [movementFilter, setMovementFilter] = useState({ productId: '', category: '', type: '', period: 'all', order: 'recent' });
+    const [productNavIndex, setProductNavIndex] = useState({});
+    const [selectedProduct, setSelectedProduct] = useState(null);
+    const [expandedCategory, setExpandedCategory] = useState(null);
 
     const showApp = Boolean(token && session && session.expiraEm && Date.now() < session.expiraEm);
 
@@ -906,18 +909,18 @@ function App() {
         const groups = new Map();
 
         filteredProducts.forEach((product) => {
-            const normalizedName = String(product.nome || '').trim().toLocaleLowerCase('pt-BR');
-            const key = normalizedName || `sem-nome-${product.id}`;
+            const categoria = product.categoria || 'Não informada';
+            const key = categoria;
 
             if (!groups.has(key)) {
                 groups.set(key, {
                     key,
-                    nome: String(product.nome || 'Sem nome').trim() || 'Sem nome',
+                    nome: categoria,
                     items: [],
                     totalQuantidade: 0,
                     totalValor: 0,
                     hasLowStock: false,
-                    categorias: new Set()
+                    categorias: new Set([categoria])
                 });
             }
 
@@ -929,7 +932,6 @@ function App() {
             group.totalQuantidade += quantidade;
             group.totalValor += quantidade * preco;
             group.hasLowStock = group.hasLowStock || quantidade < MIN_STOCK_THRESHOLD;
-            group.categorias.add(product.categoria || 'Não informada');
         });
 
         const cards = Array.from(groups.values()).map((group) => {
@@ -2568,64 +2570,84 @@ function App() {
 
                             <section className="products-section">
                                 {loadingProducts ? <p className="empty-state">Carregando produtos...</p> : null}
-                                <div id="productsList" className="products-grid">
+                                <div id="productsList" className="products-list">
                                     {groupedInventoryCards.length === 0 ? null : groupedInventoryCards.map((group) => {
+                                        const isExpanded = expandedCategory === group.key;
+                                        const emBaixa = group.hasLowStock;
+                                        const statusIcon = emBaixa ? '⚠️' : '✓';
+                                        
                                         return (
-                                            <div className={`product-card ${group.hasLowStock ? 'low-stock' : ''}`} key={group.key}>
-                                                <div className="product-header">
-                                                    <span className="product-name">{group.nome}</span>
-                                                    <span className={`product-category ${getCategoryClassName(group.categoriaPrincipal)}`}>
-                                                        {group.categorias.join(' • ')}
-                                                    </span>
-                                                </div>
-
-                                                <p className="product-description">
-                                                    {group.items.length} registro(s) agrupado(s) neste card
-                                                </p>
-
-                                                <div className="product-info">
-                                                    <div className="info-item">
-                                                        <div className="info-label">Quantidade total</div>
-                                                        <div className={`info-value quantity ${group.hasLowStock ? 'low' : ''}`}>{group.totalQuantidade}</div>
+                                            <div className={`category-section ${emBaixa ? 'low-stock' : ''}`} key={group.key}>
+                                                <button
+                                                    className={`category-header ${isExpanded ? 'expanded' : ''}`}
+                                                    type="button"
+                                                    onClick={() => setExpandedCategory(isExpanded ? null : group.key)}
+                                                >
+                                                    <div className="category-header-left">
+                                                        <span className={`category-status ${emBaixa ? 'low' : 'normal'}`}>{statusIcon}</span>
+                                                        <div className="category-info">
+                                                            <span className="category-name">{group.nome}</span>
+                                                            <span className="category-count">{group.items.length} {group.items.length === 1 ? 'item' : 'itens'}</span>
+                                                        </div>
                                                     </div>
-                                                    <div className="info-item">
-                                                        <div className="info-label">Valor total</div>
-                                                        <div className="info-value price">{formatCurrency(group.totalValor)}</div>
+                                                    <div className="category-header-right">
+                                                        <div className="category-stat">
+                                                            <span className="stat-label">Qtd</span>
+                                                            <span className={`stat-value ${emBaixa ? 'low' : ''}`}>{group.totalQuantidade}</span>
+                                                        </div>
+                                                        <div className="category-stat">
+                                                            <span className="stat-label">Valor</span>
+                                                            <span className="stat-value">{formatCurrency(group.totalValor)}</span>
+                                                        </div>
+                                                        <div className="category-expand-icon">
+                                                            {isExpanded ? '▼' : '▶'}
+                                                        </div>
                                                     </div>
-                                                </div>
+                                                </button>
 
-                                                <div className="grouped-products-list">
-                                                    {group.items.map((product) => {
-                                                        const emBaixa = Number(product.quantidade) < MIN_STOCK_THRESHOLD;
-                                                        return (
-                                                            <article className={`grouped-product-item ${emBaixa ? 'low-stock' : ''}`} key={product.id}>
-                                                                <div className="grouped-product-head">
-                                                                    <span className="grouped-product-tag">
-                                                                        Patrimônio: {product.patrimonio || 'Sem patrimônio'}
-                                                                    </span>
-                                                                    <span className={`grouped-product-stock ${emBaixa ? 'low' : ''}`}>
-                                                                        Qtd: {Number(product.quantidade) || 0}
-                                                                    </span>
+                                                {isExpanded ? (
+                                                    <div className="category-expanded">
+                                                        {group.items.map((product, index) => {
+                                                            const emBaixaProd = Number(product.quantidade) < MIN_STOCK_THRESHOLD;
+                                                            return (
+                                                                <div
+                                                                    className={`product-item ${emBaixaProd ? 'low-stock' : ''} ${selectedProduct?.id === product.id ? 'selected' : ''}`}
+                                                                    key={product.id}
+                                                                    onClick={() => setSelectedProduct(product)}
+                                                                >
+                                                                    <div className="product-item-left">
+                                                                        <span className="product-index">{index + 1}</span>
+                                                                        <div className="product-item-info">
+                                                                            <span className="product-item-name">{product.nome}</span>
+                                                                            <span className="product-item-meta">
+                                                                                {product.patrimonio || 'Sem patrimônio'} • {product.categoria}
+                                                                            </span>
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="product-item-center">
+                                                                        <span className="product-item-desc">
+                                                                            {product.descricao ? String(product.descricao).substring(0, 60) : '-'}
+                                                                        </span>
+                                                                    </div>
+                                                                    <div className="product-item-right">
+                                                                        <div className="product-item-stat">
+                                                                            <span className={`stat ${emBaixaProd ? 'low' : ''}`}>{Number(product.quantidade) || 0}</span>
+                                                                            <span className="unit">un.</span>
+                                                                        </div>
+                                                                        <div className="product-item-stat">
+                                                                            <span className="stat">{formatCurrency(product.preco)}</span>
+                                                                        </div>
+                                                                        <div className="product-item-actions">
+                                                                            <button className="action-btn view" type="button" onClick={() => setDetailsProduct(product)} title="Ver detalhes">👁️</button>
+                                                                            <button className="action-btn edit" type="button" onClick={() => setEditingProduct(product)} title="Editar">✏️</button>
+                                                                            <button className="action-btn delete" type="button" onClick={() => handleDeleteProduct(product.id)} title="Deletar">🗑️</button>
+                                                                        </div>
+                                                                    </div>
                                                                 </div>
-
-                                                                <p className="grouped-product-description">
-                                                                    {product.descricao ? String(product.descricao).substring(0, 120) : 'Sem descrição'}
-                                                                </p>
-
-                                                                <div className="grouped-product-meta">
-                                                                    <span>Preço: {formatCurrency(product.preco)}</span>
-                                                                    <span>Categoria: {product.categoria || 'Não informada'}</span>
-                                                                </div>
-
-                                                                <div className="grouped-product-actions">
-                                                                    <button className="btn btn-small btn-info" type="button" onClick={() => setDetailsProduct(product)}>Ver</button>
-                                                                    <button className="btn btn-small btn-edit" type="button" onClick={() => setEditingProduct(product)}>Editar</button>
-                                                                    <button className="btn btn-small btn-delete" type="button" onClick={() => handleDeleteProduct(product.id)}>Deletar</button>
-                                                                </div>
-                                                            </article>
-                                                        );
-                                                    })}
-                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                ) : null}
                                             </div>
                                         );
                                     })}
