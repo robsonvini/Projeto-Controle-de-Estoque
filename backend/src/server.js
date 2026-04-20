@@ -787,7 +787,7 @@ app.post('/api/products/:id/movements', authenticateToken, async (req, res) => {
             throw buildError('Tipo de movimentação inválido.');
         }
 
-        if (!Number.isFinite(quantity) || quantity < 1) {
+        if (!Number.isFinite(quantity) || quantity < 0) {
             throw buildError('Quantidade inválida.');
         }
 

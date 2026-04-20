@@ -22,10 +22,24 @@ const getCategoryClassName = (category) => String(category || '')
     .replace(/[^a-zA-Z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
 
+const normalizeCategoryKey = (value) => String(value || '')
+    .trim()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+
 const normalizeCategoryLabel = (category) => {
-    if (category === 'Informática') return 'Armazenamento';
-    if (category === 'Toner') return 'Suprimentos de Impressão';
-    return category || 'Não informada';
+    const key = normalizeCategoryKey(category);
+
+    if (!key) return 'Não informada';
+
+    if (key === 'eletronicos') return 'Eletrônicos';
+    if (key === 'material de escritorio') return 'Material de escritório';
+    if (key === 'armazenamento' || key === 'informatica') return 'Armazenamento';
+    if (key === 'perifericos') return 'Periféricos';
+    if (key === 'suprimentos de impressao' || key === 'toner') return 'Suprimentos de Impressão';
+
+    return String(category || '').trim() || 'Não informada';
 };
 
 class ApiClient {
@@ -296,6 +310,26 @@ function parseDate(raw) {
     }
 
     return null;
+}
+
+function parseFlexibleNumber(value, fallback = NaN) {
+    if (typeof value === 'number') {
+        return Number.isFinite(value) ? value : fallback;
+    }
+
+    const text = String(value ?? '').trim();
+    if (!text) {
+        return fallback;
+    }
+
+    const normalized = text
+        .replace(/\s+/g, '')
+        .replace(/[R$€£]/gi, '')
+        .replace(/\.(?=\d{3}(\D|$))/g, '')
+        .replace(',', '.');
+
+    const parsed = Number(normalized.replace(/[^\d.-]/g, ''));
+    return Number.isFinite(parsed) ? parsed : fallback;
 }
 
 function capitalizeFirstLetter(text) {
@@ -739,8 +773,24 @@ function DashboardCharts({ visible, data, categoryEntries, totalCategoryQty, tot
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                animation: {
+                    duration: 120
+                },
                 plugins: {
-                    legend: { position: 'bottom' },
+                    legend: {
+                        position: 'bottom',
+                        align: 'center',
+                        labels: {
+                            usePointStyle: true,
+                            pointStyle: 'circle',
+                            boxWidth: 8,
+                            boxHeight: 8,
+                            padding: 10,
+                            font: {
+                                size: 11
+                            }
+                        }
+                    },
                     tooltip: {
                         callbacks: {
                             label(context) {
@@ -770,6 +820,9 @@ function DashboardCharts({ visible, data, categoryEntries, totalCategoryQty, tot
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                animation: {
+                    duration: 120
+                },
                 plugins: {
                     legend: { position: 'bottom' },
                     tooltip: {
@@ -803,6 +856,9 @@ function DashboardCharts({ visible, data, categoryEntries, totalCategoryQty, tot
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                animation: {
+                    duration: 120
+                },
                 layout: {
                     padding: { top: 18, right: 10, left: 8, bottom: 4 }
                 },
@@ -848,6 +904,9 @@ function DashboardCharts({ visible, data, categoryEntries, totalCategoryQty, tot
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                animation: {
+                    duration: 120
+                },
                 plugins: {
                     legend: { display: false },
                     tooltip: {
@@ -1009,6 +1068,7 @@ function App() {
     const fileInputRef = useRef(null);
     const profilePhotoInputRef = useRef(null);
     const exportMenuRef = useRef(null);
+    const notificationMenuRef = useRef(null);
     const dashboardReportRef = useRef(null);
     const sessionCheckerRef = useRef(null);
     const apiCheckerRef = useRef(null);
@@ -1044,6 +1104,9 @@ function App() {
     const [activeView, setActiveView] = useState('inventory');
     const [dashboardPeriod, setDashboardPeriod] = useState('all');
     const [showExportMenu, setShowExportMenu] = useState(false);
+    const [showNotificationMenu, setShowNotificationMenu] = useState(false);
+    const [readNotificationIds, setReadNotificationIds] = useState([]);
+    const [dismissedNotificationIds, setDismissedNotificationIds] = useState([]);
     const [lowStockOnly, setLowStockOnly] = useState(false);
     const [search, setSearch] = useState('');
     const [categoryFilter, setCategoryFilter] = useState('');
@@ -1259,11 +1322,22 @@ function App() {
             if (exportMenuRef.current && !exportMenuRef.current.contains(event.target)) {
                 setShowExportMenu(false);
             }
+
+            if (notificationMenuRef.current && !notificationMenuRef.current.contains(event.target)) {
+                setShowNotificationMenu(false);
+            }
         };
 
         document.addEventListener('click', handleOutsideClick);
         return () => document.removeEventListener('click', handleOutsideClick);
     }, []);
+
+    useEffect(() => {
+        if (showApp) return;
+        setShowNotificationMenu(false);
+        setReadNotificationIds([]);
+        setDismissedNotificationIds([]);
+    }, [showApp]);
 
     useEffect(() => {
         if (editingProduct) {
@@ -1284,18 +1358,34 @@ function App() {
 
     useEffect(() => {
         if (!products.length) {
-            setMovementForm((current) => ({ ...current, productId: '' }));
+            setMovementForm((current) => ({ ...current, category: '', productId: '' }));
             return;
         }
 
         setMovementForm((current) => {
-            if (current.productId && products.some((item) => String(item.id) === String(current.productId))) {
+            const currentProduct = products.find((item) => String(item.id) === String(current.productId));
+
+            if (currentProduct) {
+                const normalizedCategory = normalizeCategoryLabel(currentProduct.categoria);
+                if (current.category === normalizedCategory) {
+                    return current;
+                }
+
+                return {
+                    ...current,
+                    category: normalizedCategory
+                };
+            }
+
+            const firstProduct = products[0];
+            if (!firstProduct) {
                 return current;
             }
 
             return {
                 ...current,
-                productId: String(products[0].id)
+                category: normalizeCategoryLabel(firstProduct.categoria),
+                productId: String(firstProduct.id)
             };
         });
     }, [products]);
@@ -1427,6 +1517,137 @@ function App() {
         [products]
     );
 
+    const productById = useMemo(
+        () => new Map(products.map((item) => [String(item.id), item])),
+        [products]
+    );
+
+    const headerNotifications = useMemo(() => {
+        const lowStockNotifications = lowStockProducts.map((product) => {
+            const quantity = Number(product.quantidade) || 0;
+            const timestampDate = parseDate(product.dataAtualizacao || product.updatedAt || product.createdAt || product.dataCriacao);
+
+            return {
+                id: `low-stock-${product.id}-${quantity}`,
+                type: 'warning',
+                title: 'Estoque baixo',
+                message: `${product.nome} está com ${quantity} unidade(s) em estoque.`,
+                meta: `${normalizeCategoryLabel(product.categoria)}${product.patrimonio ? ` · Patrimônio ${product.patrimonio}` : ''}`,
+                timestamp: timestampDate ? timestampDate.getTime() : 0,
+                timeLabel: timestampDate ? formatDate(timestampDate) : 'Sem data'
+            };
+        });
+
+        const exitNotifications = movements
+            .filter((movement) => String(movement.type || '').toLowerCase() === 'saida')
+            .map((movement, index) => {
+                const quantity = Number(movement.quantity) || 0;
+                const timestampDate = parseDate(movement.createdAt);
+                const fallbackProduct = productById.get(String(movement.productId));
+                const productName = movement.productName || fallbackProduct?.nome || 'Produto';
+                const previousStock = Number.isFinite(Number(movement.previousStock)) ? Number(movement.previousStock) : '-';
+                const newStock = Number.isFinite(Number(movement.newStock)) ? Number(movement.newStock) : '-';
+
+                return {
+                    id: `exit-${movement.id || `${movement.productId}-${movement.createdAt || index}-${quantity}`}`,
+                    type: 'info',
+                    title: 'Saída de estoque',
+                    message: `${productName}: saída de ${quantity} unidade(s).`,
+                    meta: `Saldo: ${previousStock} -> ${newStock}${movement.reason ? ` · ${movement.reason}` : ''}`,
+                    timestamp: timestampDate ? timestampDate.getTime() : 0,
+                    timeLabel: timestampDate ? formatDate(timestampDate) : 'Sem data'
+                };
+            })
+            .slice(0, 20);
+
+        const entryNotifications = movements
+            .filter((movement) => String(movement.type || '').toLowerCase() === 'entrada')
+            .map((movement, index) => {
+                const quantity = Number(movement.quantity) || 0;
+                const timestampDate = parseDate(movement.createdAt);
+                const fallbackProduct = productById.get(String(movement.productId));
+                const productName = movement.productName || fallbackProduct?.nome || 'Produto';
+                const previousStock = Number.isFinite(Number(movement.previousStock)) ? Number(movement.previousStock) : '-';
+                const newStock = Number.isFinite(Number(movement.newStock)) ? Number(movement.newStock) : '-';
+
+                return {
+                    id: `entry-${movement.id || `${movement.productId}-${movement.createdAt || index}-${quantity}`}`,
+                    type: 'success',
+                    title: 'Entrada de estoque',
+                    message: `${productName}: entrada de ${quantity} unidade(s).`,
+                    meta: `Saldo: ${previousStock} -> ${newStock}${movement.reason ? ` · ${movement.reason}` : ''}`,
+                    timestamp: timestampDate ? timestampDate.getTime() : 0,
+                    timeLabel: timestampDate ? formatDate(timestampDate) : 'Sem data'
+                };
+            })
+            .slice(0, 20);
+
+        return [...lowStockNotifications, ...exitNotifications, ...entryNotifications]
+            .sort((a, b) => b.timestamp - a.timestamp)
+            .slice(0, 30);
+    }, [lowStockProducts, movements, productById]);
+
+    const dismissedNotificationIdSet = useMemo(
+        () => new Set(dismissedNotificationIds),
+        [dismissedNotificationIds]
+    );
+
+    const visibleHeaderNotifications = useMemo(
+        () => headerNotifications.filter((item) => !dismissedNotificationIdSet.has(item.id)),
+        [headerNotifications, dismissedNotificationIdSet]
+    );
+
+    const readNotificationIdSet = useMemo(
+        () => new Set(readNotificationIds),
+        [readNotificationIds]
+    );
+
+    const unreadNotificationCount = useMemo(
+        () => visibleHeaderNotifications.filter((item) => !readNotificationIdSet.has(item.id)).length,
+        [visibleHeaderNotifications, readNotificationIdSet]
+    );
+
+    useEffect(() => {
+        const ids = new Set(headerNotifications.map((item) => item.id));
+        setReadNotificationIds((current) => current.filter((id) => ids.has(id)));
+        setDismissedNotificationIds((current) => current.filter((id) => ids.has(id)));
+    }, [headerNotifications]);
+
+    function markAllNotificationsAsRead() {
+        if (!visibleHeaderNotifications.length) return;
+        setReadNotificationIds((current) => {
+            const merged = new Set(current);
+            visibleHeaderNotifications.forEach((item) => merged.add(item.id));
+            return Array.from(merged);
+        });
+    }
+
+    function clearNotifications() {
+        if (!visibleHeaderNotifications.length) return;
+
+        setDismissedNotificationIds((current) => {
+            const merged = new Set(current);
+            visibleHeaderNotifications.forEach((item) => merged.add(item.id));
+            return Array.from(merged);
+        });
+
+        setReadNotificationIds((current) => {
+            const merged = new Set(current);
+            visibleHeaderNotifications.forEach((item) => merged.add(item.id));
+            return Array.from(merged);
+        });
+    }
+
+    function handleToggleNotificationMenu() {
+        setShowNotificationMenu((current) => {
+            const next = !current;
+            if (next) {
+                markAllNotificationsAsRead();
+            }
+            return next;
+        });
+    }
+
     const filteredMovements = useMemo(() => {
         let list = [...movements];
 
@@ -1516,7 +1737,18 @@ function App() {
     }, [products, movementFilter.category]);
 
     useEffect(() => {
+        if (!movementProductsByCategory.length) {
+            if (!movementForm.productId) {
+                return;
+            }
+
+            setMovementForm((current) => ({ ...current, productId: '' }));
+            return;
+        }
+
         if (!movementForm.productId) {
+            const firstId = String(movementProductsByCategory[0].id);
+            setMovementForm((current) => (current.productId === firstId ? current : { ...current, productId: firstId }));
             return;
         }
 
@@ -1525,7 +1757,8 @@ function App() {
         );
 
         if (!existsInCategory) {
-            setMovementForm((current) => ({ ...current, productId: '' }));
+            const firstId = String(movementProductsByCategory[0].id);
+            setMovementForm((current) => (current.productId === firstId ? current : { ...current, productId: firstId }));
         }
     }, [movementProductsByCategory, movementForm.productId]);
 
@@ -1721,6 +1954,9 @@ function App() {
         setMovements([]);
         setActiveView('inventory');
         setShowExportMenu(false);
+        setShowNotificationMenu(false);
+        setReadNotificationIds([]);
+        setDismissedNotificationIds([]);
         setAuthTab('login');
         setAuthFeedback({ type: 'info', text: message });
     }
@@ -1816,17 +2052,52 @@ function App() {
     async function handleCreateMovement(event) {
         event.preventDefault();
 
-        const productId = Number(movementForm.productId);
-        const payload = {
-            type: movementForm.type,
-            quantity: Number(movementForm.quantity),
-            reason: movementForm.reason.trim()
-        };
+        const normalizedCategory = normalizeCategoryLabel(movementForm.category);
+        const parsedProductId = Math.trunc(parseFlexibleNumber(movementForm.productId, NaN));
+        const selectedProduct = selectedMovementProduct
+            || products.find((item) => Number(item.id) === parsedProductId)
+            || null;
+        const productId = selectedProduct ? Number(selectedProduct.id) : parsedProductId;
+        const quantity = Math.trunc(parseFlexibleNumber(movementForm.quantity, NaN));
+        const reason = String(movementForm.reason || '').trim();
+        const type = String(movementForm.type || '').trim();
 
-        if (!productId || !payload.type || payload.quantity < 1 || !payload.reason) {
-            notify('Preencha os dados da movimentação corretamente.', 'error');
+        if (!normalizedCategory || normalizedCategory === 'Não informada') {
+            notify('Selecione uma categoria para registrar a movimentação.', 'error');
             return;
         }
+
+        if (!Number.isFinite(productId) || productId < 1) {
+            notify('Selecione um produto válido para movimentação.', 'error');
+            return;
+        }
+
+        const product = selectedProduct || products.find((item) => Number(item.id) === productId);
+        if (!product) {
+            notify('O produto selecionado não foi encontrado. Atualize a tela e tente novamente.', 'error');
+            return;
+        }
+
+        if (!['entrada', 'saida'].includes(type)) {
+            notify('Tipo de movimentação inválido.', 'error');
+            return;
+        }
+
+        if (!Number.isFinite(quantity) || quantity < 1) {
+            notify('Informe uma quantidade válida maior ou igual a zero.', 'error');
+            return;
+        }
+
+        if (!reason) {
+            notify('Informe o motivo da movimentação.', 'error');
+            return;
+        }
+
+        const payload = {
+            type,
+            quantity,
+            reason
+        };
 
         await registerProductMovement(productId, payload, { resetForm: true });
     }
@@ -2558,6 +2829,63 @@ function App() {
                             </div>
                             <span id="loggedUserText">{sessionUser ? `${sessionUser.name || sessionUser.email} · ${sessionUser.email}` : ''}</span>
                             <span className="current-datetime" aria-live="polite">{nowLabel}</span>
+                            <div className="notification-wrap" ref={notificationMenuRef}>
+                                <button
+                                    type="button"
+                                    className={`notification-bell ${unreadNotificationCount ? 'has-unread' : ''}`}
+                                    onClick={handleToggleNotificationMenu}
+                                    aria-label={`Notificações (${unreadNotificationCount} não lida(s))`}
+                                    aria-expanded={showNotificationMenu}
+                                    title="Notificações de estoque"
+                                >
+                                    <svg className="notification-bell-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                        <path d="M12 22a2.3 2.3 0 0 0 2.3-2.3h-4.6A2.3 2.3 0 0 0 12 22zm6.2-6.1V11a6.2 6.2 0 0 0-4.9-6.1V4a1.3 1.3 0 0 0-2.6 0v.9A6.2 6.2 0 0 0 5.8 11v4.9l-1.7 1.7a1 1 0 0 0 .7 1.7h14.4a1 1 0 0 0 .7-1.7l-1.7-1.7z"></path>
+                                    </svg>
+                                    {unreadNotificationCount > 0 ? <span className="notification-badge">{unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}</span> : null}
+                                </button>
+                                <div className={`notification-dropdown ${showNotificationMenu ? 'show' : ''}`} role="dialog" aria-label="Notificações de estoque">
+                                    <div className="notification-dropdown-header">
+                                        <strong>Notificações</strong>
+                                        <div className="notification-actions">
+                                            <button
+                                                type="button"
+                                                className="notification-mark-read"
+                                                onClick={markAllNotificationsAsRead}
+                                                disabled={!visibleHeaderNotifications.length}
+                                            >
+                                                Marcar como lidas
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className="notification-clear"
+                                                onClick={clearNotifications}
+                                                disabled={!visibleHeaderNotifications.length}
+                                            >
+                                                Limpar notificações
+                                            </button>
+                                        </div>
+                                    </div>
+                                    {visibleHeaderNotifications.length === 0 ? (
+                                        <p className="notification-empty">Sem notificações no momento.</p>
+                                    ) : (
+                                        <ul className="notification-list">
+                                            {visibleHeaderNotifications.map((item) => (
+                                                <li
+                                                    key={item.id}
+                                                    className={`notification-item ${item.type} ${readNotificationIdSet.has(item.id) ? '' : 'unread'}`}
+                                                >
+                                                    <div className="notification-item-head">
+                                                        <strong>{item.title}</strong>
+                                                        <span>{item.timeLabel}</span>
+                                                    </div>
+                                                    <p>{item.message}</p>
+                                                    <small>{item.meta}</small>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    )}
+                                </div>
+                            </div>
                             <button id="logoutBtn" className="btn btn-secondary" type="button" onClick={() => handleLogout('Sessão encerrada com sucesso.')}>Sair</button>
                         </div>
                         <div className="view-tabs">
@@ -2736,7 +3064,7 @@ function App() {
                                                 <input
                                                     id="movementQuantity"
                                                     type="number"
-                                                    min="1"
+                                                    min="0"
                                                     value={movementForm.quantity}
                                                     onChange={(event) => setMovementForm((current) => ({ ...current, quantity: event.target.value }))}
                                                     required
