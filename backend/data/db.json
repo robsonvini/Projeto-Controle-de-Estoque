@@ -29,14 +29,14 @@
       "userId": 1775675197663,
       "nome": "Mouse Logitech",
       "patrimonio": "",
-      "categoria": "Eletrônicos",
+      "categoria": "Periféricos",
       "quantidade": 4,
       "preco": 80,
       "descricao": "",
       "dataCriacao": "19/04/2026",
-      "dataAtualizacao": "19/04/2026",
+      "dataAtualizacao": "20/04/2026",
       "createdAt": "2026-04-19T20:44:49.123Z",
-      "updatedAt": "2026-04-19T20:45:11.016Z"
+      "updatedAt": "2026-04-20T11:22:37.824Z"
     },
     {
       "id": 1776630913320,
@@ -83,13 +83,15 @@
     {
       "id": 1775676352787,
       "userId": 1775675197663,
-      "nome": "Toner Brother 690912DW",
-      "categoria": "Eletrônicos",
+      "nome": "Toner",
+      "categoria": "Suprimentos de Impressão",
       "quantidade": 8,
       "preco": 150,
-      "descricao": "",
+      "descricao": "Brother 690912DW",
       "dataCriacao": "08/04/2026",
-      "dataAtualizacao": "11/04/2026"
+      "dataAtualizacao": "20/04/2026",
+      "patrimonio": "",
+      "updatedAt": "2026-04-20T11:33:36.340Z"
     },
     {
       "id": 1775678229707,
@@ -98,9 +100,11 @@
       "categoria": "Eletrônicos",
       "quantidade": 13,
       "preco": 3500,
-      "descricao": "",
+      "descricao": "Processador: I7 da 8ª geração",
       "dataCriacao": "08/04/2026",
-      "dataAtualizacao": "10/04/2026"
+      "dataAtualizacao": "20/04/2026",
+      "patrimonio": "",
+      "updatedAt": "2026-04-20T11:33:07.151Z"
     },
     {
       "id": 1775681960676,

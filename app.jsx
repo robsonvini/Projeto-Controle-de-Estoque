@@ -1,6 +1,6 @@
 const { useEffect, useMemo, useRef, useState } = React;
 
-const PRODUCT_CATEGORIES = ['Eletrônicos', 'Material de escritório'];
+const PRODUCT_CATEGORIES = ['Eletrônicos', 'Material de escritório', 'Armazenamento', 'Periféricos', 'Suprimentos de Impressão'];
 const PRODUCT_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#14b8a6'];
 const BACKUP_SCHEDULE_DAYS = [
     { value: '0', label: 'Domingo' },
@@ -21,6 +21,12 @@ const getCategoryClassName = (category) => String(category || '')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-zA-Z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
+
+const normalizeCategoryLabel = (category) => {
+    if (category === 'Informática') return 'Armazenamento';
+    if (category === 'Toner') return 'Suprimentos de Impressão';
+    return category || 'Não informada';
+};
 
 class ApiClient {
     constructor() {
@@ -292,6 +298,64 @@ function parseDate(raw) {
     return null;
 }
 
+function capitalizeFirstLetter(text) {
+    const value = String(text || '');
+    if (!value) return value;
+    return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function getUserInitial(nameOrEmail) {
+    const value = String(nameOrEmail || '').trim();
+    if (!value) return 'U';
+    return value.charAt(0).toUpperCase();
+}
+
+const DEFAULT_PROFILE_PHOTO_CONFIG = {
+    src: '',
+    zoom: 1,
+    offsetX: 0,
+    offsetY: 0
+};
+
+const PROFILE_PHOTO_MAX_SIZE_BYTES = 4 * 1024 * 1024;
+
+function parseProfilePhotoConfig(rawValue) {
+    const raw = String(rawValue || '').trim();
+    if (!raw) return { ...DEFAULT_PROFILE_PHOTO_CONFIG };
+
+    if (raw.startsWith('{')) {
+        try {
+            const parsed = JSON.parse(raw);
+            return {
+                src: String(parsed?.src || ''),
+                zoom: Number(parsed?.zoom) >= 1 ? Math.min(2.5, Number(parsed.zoom)) : 1,
+                offsetX: Number.isFinite(Number(parsed?.offsetX)) ? Math.max(-35, Math.min(35, Number(parsed.offsetX))) : 0,
+                offsetY: Number.isFinite(Number(parsed?.offsetY)) ? Math.max(-35, Math.min(35, Number(parsed.offsetY))) : 0
+            };
+        } catch {
+            return { ...DEFAULT_PROFILE_PHOTO_CONFIG };
+        }
+    }
+
+    return {
+        ...DEFAULT_PROFILE_PHOTO_CONFIG,
+        src: raw
+    };
+}
+
+function getProfilePhotoStyle(config) {
+    const current = config || DEFAULT_PROFILE_PHOTO_CONFIG;
+    const zoom = Number(current.zoom) >= 1 ? Number(current.zoom) : 1;
+    const offsetX = Number.isFinite(Number(current.offsetX)) ? Number(current.offsetX) : 0;
+    const offsetY = Number.isFinite(Number(current.offsetY)) ? Number(current.offsetY) : 0;
+
+    return {
+        objectPosition: `${50 + offsetX}% ${50 + offsetY}%`,
+        transform: `scale(${zoom.toFixed(2)})`,
+        transformOrigin: 'center center'
+    };
+}
+
 function getPeriodDays(period) {
     if (period === 'all') return null;
     const days = Number(period);
@@ -397,7 +461,7 @@ function computeDashboard(products, period) {
     const categorias = {};
 
     filtered.forEach((produto) => {
-        const categoria = PRODUCT_CATEGORIES.includes(produto.categoria) ? produto.categoria : null;
+        const categoria = normalizeCategoryLabel(produto.categoria);
         if (!categoria) {
             return;
         }
@@ -477,24 +541,189 @@ function Modal({ title, onClose, children, footer }) {
     );
 }
 
-function DashboardCharts({ visible, data }) {
+const doughnutPercentagePlugin = {
+    id: 'doughnutPercentagePlugin',
+    afterDatasetsDraw(chart) {
+        const dataset = chart.data?.datasets?.[0];
+        if (!dataset?.data?.length) return;
+
+        const values = dataset.data.map((value) => Number(value) || 0);
+        const total = values.reduce((sum, value) => sum + value, 0);
+        if (total <= 0) return;
+
+        const meta = chart.getDatasetMeta(0);
+        const { ctx } = chart;
+
+        ctx.save();
+        ctx.font = '700 12px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+
+        meta.data.forEach((arc, index) => {
+            const value = values[index];
+            if (value <= 0) return;
+
+            const percent = (value / total) * 100;
+            const { x, y } = arc.tooltipPosition();
+
+            ctx.fillStyle = '#0f172a';
+            ctx.fillText(`${percent.toFixed(1)}%`, x, y);
+        });
+
+        ctx.restore();
+    }
+};
+
+const barPercentagePlugin = {
+    id: 'barPercentagePlugin',
+    afterDatasetsDraw(chart) {
+        const dataset = chart.data?.datasets?.[0];
+        if (!dataset?.data?.length) return;
+
+        const values = dataset.data.map((value) => Number(value) || 0);
+        const total = values.reduce((sum, value) => sum + value, 0);
+        if (total <= 0) return;
+
+        const meta = chart.getDatasetMeta(0);
+        const { ctx } = chart;
+
+        ctx.save();
+        ctx.font = '700 12px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        ctx.fillStyle = '#0f172a';
+
+        meta.data.forEach((bar, index) => {
+            const value = values[index];
+            if (value <= 0) return;
+
+            const percent = (value / total) * 100;
+            const x = bar.x;
+            const y = bar.y - 6;
+
+            ctx.fillText(`${percent.toFixed(1)}%`, x, y);
+        });
+
+        ctx.restore();
+    }
+};
+
+const stockLevelValuePlugin = {
+    id: 'stockLevelValuePlugin',
+    afterDatasetsDraw(chart) {
+        const dataset = chart.data?.datasets?.[0];
+        if (!dataset?.data?.length) return;
+
+        const meta = chart.getDatasetMeta(0);
+        const { ctx } = chart;
+
+        ctx.save();
+        ctx.font = '700 12px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        ctx.fillStyle = '#0f172a';
+
+        meta.data.forEach((bar, index) => {
+            const value = Number(dataset.data[index]) || 0;
+            ctx.fillText(String(value), bar.x, bar.y - 6);
+        });
+
+        ctx.restore();
+    }
+};
+
+
+function DashboardCharts({ visible, data, categoryEntries, totalCategoryQty, totalCategoryValue }) {
     const categoryRef = useRef(null);
     const statusRef = useRef(null);
     const flowRef = useRef(null);
-    const chartsRef = useRef({ category: null, status: null, flow: null });
+    const levelRef = useRef(null);
+    const chartsRef = useRef({ category: null, status: null, flow: null, level: null });
+
+    function buildStockLevelSeries(movements, currentTotalItems) {
+        const list = Array.isArray(movements) ? movements : [];
+        const monthDelta = new Map();
+
+        list.forEach((movement) => {
+            const date = parseDate(movement.createdAt);
+            if (!date) return;
+
+            const type = String(movement.type || '').toLowerCase();
+            const quantity = Math.max(0, Number(movement.quantity) || 0);
+            const delta = type === 'entrada' ? quantity : type === 'saida' ? -quantity : 0;
+            const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+
+            monthDelta.set(key, (monthDelta.get(key) || 0) + delta);
+        });
+
+        if (!monthDelta.size) {
+            const now = new Date();
+            const fallbackLabel = new Intl.DateTimeFormat('pt-BR', { month: 'short', year: '2-digit' })
+                .format(new Date(now.getFullYear(), now.getMonth(), 1))
+                .replace(/\./g, '');
+
+            return {
+                labels: [capitalizeFirstLetter(fallbackLabel)],
+                values: [Math.max(0, Number(currentTotalItems) || 0)]
+            };
+        }
+
+        const sortedKeys = Array.from(monthDelta.keys()).sort();
+        const firstKey = sortedKeys[0];
+        const lastKey = sortedKeys[sortedKeys.length - 1];
+        const [firstYear, firstMonth] = firstKey.split('-').map(Number);
+        const [lastYear, lastMonth] = lastKey.split('-').map(Number);
+
+        const timeline = [];
+        const cursor = new Date(firstYear, firstMonth - 1, 1);
+        const end = new Date(lastYear, lastMonth - 1, 1);
+
+        while (cursor.getTime() <= end.getTime()) {
+            const key = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}`;
+            timeline.push({
+                key,
+                year: cursor.getFullYear(),
+                monthIndex: cursor.getMonth(),
+                delta: monthDelta.get(key) || 0
+            });
+            cursor.setMonth(cursor.getMonth() + 1);
+        }
+
+        const maxMonths = 8;
+        const sliced = timeline.length > maxMonths ? timeline.slice(-maxMonths) : timeline;
+        const totalDelta = sliced.reduce((sum, item) => sum + item.delta, 0);
+        let level = Math.max(0, (Number(currentTotalItems) || 0) - totalDelta);
+
+        const values = sliced.map((item) => {
+            level = Math.max(0, level + item.delta);
+            return level;
+        });
+
+        const labels = sliced.map((item) => (
+            capitalizeFirstLetter(
+                new Intl.DateTimeFormat('pt-BR', { month: 'short', year: '2-digit' })
+                .format(new Date(item.year, item.monthIndex, 1))
+                .replace(/\./g, '')
+            )
+        ));
+
+        return { labels, values };
+    }
 
     useEffect(() => {
-        if (!visible || !window.Chart || !categoryRef.current || !statusRef.current || !flowRef.current) return undefined;
+        if (!visible || !window.Chart || !categoryRef.current || !statusRef.current || !flowRef.current || !levelRef.current) return undefined;
 
         const categoryEntries = Object.entries(data.categorias).sort((a, b) => b[1].quantidade - a[1].quantidade);
         const categoryLabels = categoryEntries.length ? categoryEntries.map(([name]) => name) : ['Sem dados'];
         const categoryValues = categoryEntries.length ? categoryEntries.map(([, info]) => info.quantidade) : [1];
         const stockValues = [Math.max(data.totalProdutos - data.produtosBaixos, 0), data.produtosBaixos];
         const movementValues = [Math.max(data.fluxo.entryQuantity, 0), Math.max(data.fluxo.exitQuantity, 0)];
+        const stockLevelSeries = buildStockLevelSeries(data.movements, data.totalItens);
 
         if (chartsRef.current.category) chartsRef.current.category.destroy();
         if (chartsRef.current.status) chartsRef.current.status.destroy();
         if (chartsRef.current.flow) chartsRef.current.flow.destroy();
+        if (chartsRef.current.level) chartsRef.current.level.destroy();
 
         chartsRef.current.category = new window.Chart(categoryRef.current.getContext('2d'), {
             type: 'doughnut',
@@ -506,11 +735,23 @@ function DashboardCharts({ visible, data }) {
                     borderWidth: 0
                 }]
             },
+            plugins: [doughnutPercentagePlugin],
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
                 plugins: {
-                    legend: { position: 'bottom' }
+                    legend: { position: 'bottom' },
+                    tooltip: {
+                        callbacks: {
+                            label(context) {
+                                const raw = Number(context.raw) || 0;
+                                const datasetData = context.dataset?.data || [];
+                                const total = datasetData.reduce((sum, value) => sum + (Number(value) || 0), 0);
+                                const percent = total > 0 ? (raw / total) * 100 : 0;
+                                return `${context.label}: ${raw} (${percent.toFixed(1)}%)`;
+                            }
+                        }
+                    }
                 }
             }
         });
@@ -525,11 +766,23 @@ function DashboardCharts({ visible, data }) {
                     borderWidth: 0
                 }]
             },
+            plugins: [doughnutPercentagePlugin],
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
                 plugins: {
-                    legend: { position: 'bottom' }
+                    legend: { position: 'bottom' },
+                    tooltip: {
+                        callbacks: {
+                            label(context) {
+                                const raw = Number(context.raw) || 0;
+                                const datasetData = context.dataset?.data || [];
+                                const total = datasetData.reduce((sum, value) => sum + (Number(value) || 0), 0);
+                                const percent = total > 0 ? (raw / total) * 100 : 0;
+                                return `${context.label}: ${raw} (${percent.toFixed(1)}%)`;
+                            }
+                        }
+                    }
                 }
             }
         });
@@ -546,14 +799,90 @@ function DashboardCharts({ visible, data }) {
                     maxBarThickness: 72
                 }]
             },
+            plugins: [barPercentagePlugin],
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                layout: {
+                    padding: { top: 18, right: 10, left: 8, bottom: 4 }
+                },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label(context) {
+                                const raw = Number(context.raw) || 0;
+                                const datasetData = context.dataset?.data || [];
+                                const total = datasetData.reduce((sum, value) => sum + (Number(value) || 0), 0);
+                                const percent = total > 0 ? (raw / total) * 100 : 0;
+                                return `${context.dataset.label}: ${raw} (${percent.toFixed(1)}%)`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: { beginAtZero: true, ticks: { precision: 0 } }
+                }
+            }
+        });
+
+        chartsRef.current.level = new window.Chart(levelRef.current.getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels: stockLevelSeries.labels,
+                datasets: [{
+                    label: 'Nível de estoque (quantidade)',
+                    data: stockLevelSeries.values,
+                    backgroundColor: stockLevelSeries.values.map((_, index, array) => (
+                        index === array.length - 1 ? '#1d4ed8' : '#60a5fa'
+                    )),
+                    borderColor: '#1e3a8a',
+                    borderWidth: 1,
+                    borderRadius: 8,
+                    maxBarThickness: 64,
+                    categoryPercentage: 0.72,
+                    barPercentage: 0.86
+                }]
+            },
+            plugins: [stockLevelValuePlugin],
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
                 plugins: {
-                    legend: { display: false }
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label(context) {
+                                return `Quantidade: ${Number(context.raw) || 0}`;
+                            }
+                        }
+                    }
                 },
                 scales: {
-                    y: { beginAtZero: true, ticks: { precision: 0 } }
+                    x: {
+                        grid: { display: false },
+                        ticks: {
+                            color: '#1e293b',
+                            font: { size: 12, weight: '600' },
+                            maxRotation: 0,
+                            minRotation: 0,
+                            callback(value) {
+                                return capitalizeFirstLetter(String(this.getLabelForValue(value) || ''));
+                            }
+                        }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            precision: 0,
+                            color: '#1e293b',
+                            font: { size: 12, weight: '600' }
+                        },
+                        grid: {
+                            color: 'rgba(148, 163, 184, 0.35)',
+                            borderDash: [4, 4]
+                        }
+                    }
                 }
             }
         });
@@ -562,8 +891,22 @@ function DashboardCharts({ visible, data }) {
             if (chartsRef.current.category) chartsRef.current.category.destroy();
             if (chartsRef.current.status) chartsRef.current.status.destroy();
             if (chartsRef.current.flow) chartsRef.current.flow.destroy();
+            if (chartsRef.current.level) chartsRef.current.level.destroy();
         };
     }, [visible, data]);
+
+    const monthlyInsights = data.monthlyInsights || {
+        monthLabel: '-',
+        entryCount: 0,
+        exitCount: 0,
+        entryQuantity: 0,
+        exitQuantity: 0
+    };
+    const monthlyTotal = Math.max(0, Number(monthlyInsights.entryQuantity || 0) + Number(monthlyInsights.exitQuantity || 0));
+    const entryShare = monthlyTotal ? (Number(monthlyInsights.entryQuantity || 0) / monthlyTotal) * 100 : 0;
+    const exitShare = monthlyTotal ? (Number(monthlyInsights.exitQuantity || 0) / monthlyTotal) * 100 : 0;
+    const monthlyBalance = Number(monthlyInsights.entryQuantity || 0) - Number(monthlyInsights.exitQuantity || 0);
+    const monthlyBalanceLabel = monthlyBalance > 0 ? `+${monthlyBalance}` : String(monthlyBalance);
 
     return (
         <div className="dashboard-grid">
@@ -572,7 +915,38 @@ function DashboardCharts({ visible, data }) {
                     <h3>Participação por categoria</h3>
                     <p>Percentual de itens por categoria sobre o total do estoque.</p>
                 </div>
-                <canvas ref={categoryRef} height="260"></canvas>
+                <div className="category-chart-layout">
+                    <div className="category-breakdown-inline">
+                        <div id="categoryPercentList" className="category-percent-list">
+                            {categoryEntries.length === 0 ? (
+                                <p className="empty-state">Nenhuma categoria para exibir ainda.</p>
+                            ) : (
+                                [...categoryEntries]
+                                    .sort((a, b) => b[1].quantidade - a[1].quantidade)
+                                    .map(([categoria, info]) => {
+                                        const qtyPct = ((info.quantidade / totalCategoryQty) * 100).toFixed(1);
+                                        const valueShare = ((info.valor / totalCategoryValue) * 100).toFixed(1);
+                                        return (
+                                            <div className="category-percent-item" key={categoria}>
+                                                <header>
+                                                    <h4>{categoria}</h4>
+                                                    <span>{qtyPct}%</span>
+                                                </header>
+                                                <div className="progress-track"><div className="progress-fill" style={{ width: `${qtyPct}%` }}></div></div>
+                                                <div className="category-meta">
+                                                    <span>{info.quantidade} itens</span>
+                                                    <span>{valueShare}% do valor</span>
+                                                </div>
+                                            </div>
+                                        );
+                                    })
+                            )}
+                        </div>
+                    </div>
+                    <div className="category-chart-canvas">
+                        <canvas ref={categoryRef} height="260"></canvas>
+                    </div>
+                </div>
             </div>
             <div className="chart-card">
                 <div className="section-heading compact">
@@ -581,12 +955,50 @@ function DashboardCharts({ visible, data }) {
                 </div>
                 <canvas ref={statusRef} height="260"></canvas>
             </div>
-            <div className="chart-card">
+            <div className="chart-card chart-card-flow">
                 <div className="section-heading compact">
                     <h3>Fluxo de movimentações</h3>
                     <p>Volume de entradas e saídas de produtos no período selecionado.</p>
                 </div>
                 <canvas ref={flowRef} height="260"></canvas>
+            </div>
+            <div className="chart-card chart-card-stock-level">
+                <div className="section-heading compact">
+                    <h3>Nível de estoque</h3>
+                    <p>Quantidade acumulada por mês com base no histórico de movimentações.</p>
+                </div>
+                <canvas ref={levelRef} height="320"></canvas>
+            </div>
+            <div className="chart-card chart-card-monthly-insights">
+                <div className="section-heading compact">
+                    <h3>Insights do mês</h3>
+                    <p>{monthlyInsights.monthLabel}</p>
+                </div>
+                <div className={`insight-balance ${monthlyBalance >= 0 ? 'positive' : 'negative'}`}>
+                    <span>Saldo do mês</span>
+                    <strong>{monthlyBalanceLabel}</strong>
+                    <small>{monthlyTotal} item(ns) movimentados</small>
+                </div>
+                <div className="stock-level-insights">
+                    <div className="stock-level-insight-card entry">
+                        <span className="label">▲ Entrada no mês</span>
+                        <strong>{monthlyInsights.entryQuantity ?? 0}</strong>
+                        <small>{monthlyInsights.entryCount ?? 0} movimentação(ões)</small>
+                        <div className="insight-progress" aria-hidden="true">
+                            <div className="insight-progress-fill" style={{ width: `${entryShare.toFixed(1)}%` }}></div>
+                        </div>
+                        <span className="insight-share">{entryShare.toFixed(1)}% do fluxo mensal</span>
+                    </div>
+                    <div className="stock-level-insight-card exit">
+                        <span className="label">▼ Saída no mês</span>
+                        <strong>{monthlyInsights.exitQuantity ?? 0}</strong>
+                        <small>{monthlyInsights.exitCount ?? 0} movimentação(ões)</small>
+                        <div className="insight-progress" aria-hidden="true">
+                            <div className="insight-progress-fill" style={{ width: `${exitShare.toFixed(1)}%` }}></div>
+                        </div>
+                        <span className="insight-share">{exitShare.toFixed(1)}% do fluxo mensal</span>
+                    </div>
+                </div>
             </div>
         </div>
     );
@@ -595,6 +1007,7 @@ function DashboardCharts({ visible, data }) {
 function App() {
     const api = useRef(new ApiClient()).current;
     const fileInputRef = useRef(null);
+    const profilePhotoInputRef = useRef(null);
     const exportMenuRef = useRef(null);
     const dashboardReportRef = useRef(null);
     const sessionCheckerRef = useRef(null);
@@ -667,11 +1080,16 @@ function App() {
         reason: ''
     });
     const [movementFilter, setMovementFilter] = useState({ productId: '', category: '', type: '', period: 'all', order: 'recent' });
+    const [profilePhotoConfig, setProfilePhotoConfig] = useState(() => ({ ...DEFAULT_PROFILE_PHOTO_CONFIG }));
+    const [profilePhotoDraft, setProfilePhotoDraft] = useState(() => ({ ...DEFAULT_PROFILE_PHOTO_CONFIG }));
+    const [showProfilePhotoModal, setShowProfilePhotoModal] = useState(false);
     const [productNavIndex, setProductNavIndex] = useState({});
     const [selectedProduct, setSelectedProduct] = useState(null);
     const [expandedCategory, setExpandedCategory] = useState(null);
 
     const showApp = Boolean(token && session && session.expiraEm && Date.now() < session.expiraEm);
+    const activeUserEmail = String(session?.email || '').trim().toLowerCase();
+    const profilePhotoStorageKey = activeUserEmail ? `estoqueProfilePhoto:${activeUserEmail}` : '';
 
     useEffect(() => {
         const checkBackend = async (silent = false) => {
@@ -819,6 +1237,24 @@ function App() {
     }, []);
 
     useEffect(() => {
+        if (!showApp || !profilePhotoStorageKey) {
+            setProfilePhotoConfig({ ...DEFAULT_PROFILE_PHOTO_CONFIG });
+            setProfilePhotoDraft({ ...DEFAULT_PROFILE_PHOTO_CONFIG });
+            return;
+        }
+
+        try {
+            const saved = localStorage.getItem(profilePhotoStorageKey) || '';
+            const parsed = parseProfilePhotoConfig(saved);
+            setProfilePhotoConfig(parsed);
+            setProfilePhotoDraft(parsed);
+        } catch {
+            setProfilePhotoConfig({ ...DEFAULT_PROFILE_PHOTO_CONFIG });
+            setProfilePhotoDraft({ ...DEFAULT_PROFILE_PHOTO_CONFIG });
+        }
+    }, [showApp, profilePhotoStorageKey]);
+
+    useEffect(() => {
         const handleOutsideClick = (event) => {
             if (exportMenuRef.current && !exportMenuRef.current.contains(event.target)) {
                 setShowExportMenu(false);
@@ -834,7 +1270,7 @@ function App() {
             setEditForm({
                 nome: editingProduct.nome || '',
                 patrimonio: editingProduct.patrimonio || '',
-                categoria: editingProduct.categoria || 'Eletrônicos',
+                categoria: normalizeCategoryLabel(editingProduct.categoria) || 'Eletrônicos',
                 quantidade: editingProduct.quantidade || 1,
                 preco: editingProduct.preco ?? '',
                 descricao: editingProduct.descricao || ''
@@ -878,7 +1314,7 @@ function App() {
         }
 
         if (categoryFilter) {
-            list = list.filter((product) => product.categoria === categoryFilter);
+            list = list.filter((product) => normalizeCategoryLabel(product.categoria) === categoryFilter);
         }
 
         if (lowStockOnly) {
@@ -909,7 +1345,7 @@ function App() {
         const groups = new Map();
 
         filteredProducts.forEach((product) => {
-            const categoria = product.categoria || 'Não informada';
+            const categoria = normalizeCategoryLabel(product.categoria);
             const key = categoria;
 
             if (!groups.has(key)) {
@@ -977,7 +1413,7 @@ function App() {
     );
 
     const movementCategoryByProductId = useMemo(
-        () => new Map(products.map((item) => [String(item.id), item.categoria || 'Não informada'])),
+        () => new Map(products.map((item) => [String(item.id), normalizeCategoryLabel(item.categoria)])),
         [products]
     );
 
@@ -1068,7 +1504,7 @@ function App() {
             return [];
         }
 
-        return products.filter((item) => item.categoria === movementForm.category);
+        return products.filter((item) => normalizeCategoryLabel(item.categoria) === movementForm.category);
     }, [products, movementForm.category]);
 
     const movementFilterProductsByCategory = useMemo(() => {
@@ -1076,7 +1512,7 @@ function App() {
             return products;
         }
 
-        return products.filter((item) => item.categoria === movementFilter.category);
+        return products.filter((item) => normalizeCategoryLabel(item.categoria) === movementFilter.category);
     }, [products, movementFilter.category]);
 
     useEffect(() => {
@@ -1153,7 +1589,48 @@ function App() {
     const dashboardData = useMemo(() => computeDashboard(products, dashboardPeriod), [products, dashboardPeriod]);
     const dashboardMovements = useMemo(() => filterMovementsByPeriod(movements, dashboardPeriod), [movements, dashboardPeriod]);
     const dashboardFlow = useMemo(() => computeMovementFlow(dashboardMovements), [dashboardMovements]);
-    const dashboardChartsData = useMemo(() => ({ ...dashboardData, fluxo: dashboardFlow }), [dashboardData, dashboardFlow]);
+    const monthlyStockInsights = useMemo(() => {
+        const nowDate = new Date();
+        const month = nowDate.getMonth();
+        const year = nowDate.getFullYear();
+
+        const summary = (Array.isArray(movements) ? movements : []).reduce((acc, movement) => {
+            const date = parseDate(movement.createdAt);
+            if (!date || date.getMonth() !== month || date.getFullYear() !== year) {
+                return acc;
+            }
+
+            const type = String(movement.type || '').toLowerCase();
+            const quantity = Math.max(0, Number(movement.quantity) || 0);
+
+            if (type === 'entrada') {
+                acc.entryCount += 1;
+                acc.entryQuantity += quantity;
+                return acc;
+            }
+
+            if (type === 'saida') {
+                acc.exitCount += 1;
+                acc.exitQuantity += quantity;
+            }
+
+            return acc;
+        }, {
+            entryCount: 0,
+            exitCount: 0,
+            entryQuantity: 0,
+            exitQuantity: 0
+        });
+
+        return {
+            ...summary,
+            monthLabel: capitalizeFirstLetter(new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric' }).format(nowDate))
+        };
+    }, [movements]);
+    const dashboardChartsData = useMemo(
+        () => ({ ...dashboardData, fluxo: dashboardFlow, movements: dashboardMovements, monthlyInsights: monthlyStockInsights }),
+        [dashboardData, dashboardFlow, dashboardMovements, monthlyStockInsights]
+    );
     const nowLabel = useMemo(() => {
         const label = new Intl.DateTimeFormat('pt-BR', {
             weekday: 'long',
@@ -1705,6 +2182,93 @@ function App() {
         setAuthFeedback({ type, text });
     }
 
+    function openProfilePhotoModal() {
+        setProfilePhotoDraft({ ...profilePhotoConfig });
+        setShowProfilePhotoModal(true);
+    }
+
+    function closeProfilePhotoModal() {
+        setShowProfilePhotoModal(false);
+        setProfilePhotoDraft({ ...profilePhotoConfig });
+    }
+
+    function saveProfilePhotoConfig(nextConfig) {
+        if (!profilePhotoStorageKey) {
+            notify('Não foi possível salvar a foto do usuário.', 'error');
+            return;
+        }
+
+        try {
+            if (!nextConfig?.src) {
+                localStorage.removeItem(profilePhotoStorageKey);
+                setProfilePhotoConfig({ ...DEFAULT_PROFILE_PHOTO_CONFIG });
+                notify('Foto do usuário removida.', 'success');
+                return;
+            }
+
+            const payload = {
+                src: String(nextConfig.src),
+                zoom: Number(nextConfig.zoom) >= 1 ? Math.min(2.5, Number(nextConfig.zoom)) : 1,
+                offsetX: Number.isFinite(Number(nextConfig.offsetX)) ? Math.max(-35, Math.min(35, Number(nextConfig.offsetX))) : 0,
+                offsetY: Number.isFinite(Number(nextConfig.offsetY)) ? Math.max(-35, Math.min(35, Number(nextConfig.offsetY))) : 0
+            };
+
+            localStorage.setItem(profilePhotoStorageKey, JSON.stringify(payload));
+            setProfilePhotoConfig(payload);
+            notify('Foto do usuário atualizada com sucesso!', 'success');
+        } catch {
+            notify('Não foi possível salvar a foto no navegador.', 'error');
+        }
+    }
+
+    function handleSaveProfilePhotoAdjustments() {
+        saveProfilePhotoConfig(profilePhotoDraft);
+        setShowProfilePhotoModal(false);
+    }
+
+    function handleSelectProfilePhoto(event) {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        if (!file.type.startsWith('image/')) {
+            notify('Selecione um arquivo de imagem válido.', 'error');
+            event.target.value = '';
+            return;
+        }
+
+        if (file.size > PROFILE_PHOTO_MAX_SIZE_BYTES) {
+            notify('A foto deve ter no máximo 4MB.', 'error');
+            event.target.value = '';
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = () => {
+            const result = String(reader.result || '');
+            if (!result) {
+                notify('Não foi possível carregar a foto do usuário.', 'error');
+                return;
+            }
+
+            const nextDraft = {
+                src: result,
+                zoom: 1,
+                offsetX: 0,
+                offsetY: 0
+            };
+
+            setProfilePhotoDraft(nextDraft);
+            setShowProfilePhotoModal(true);
+        };
+
+        reader.onerror = () => {
+            notify('Falha ao ler o arquivo da foto.', 'error');
+        };
+
+        reader.readAsDataURL(file);
+        event.target.value = '';
+    }
+
     if (!bootstrapped) {
         return (
             <div className="auth-shell">
@@ -1963,6 +2527,35 @@ function App() {
                             <span className="api-status-text">{apiStatus.text}</span>
                         </div>
                         <div className="session-info">
+                            <div className="profile-avatar-wrap">
+                                <button
+                                    type="button"
+                                    className="profile-avatar-btn"
+                                    aria-label="Visualizar e ajustar foto do usuário"
+                                    title="Visualizar e ajustar foto do usuário"
+                                    onClick={openProfilePhotoModal}
+                                >
+                                    {profilePhotoConfig.src ? (
+                                        <img
+                                            src={profilePhotoConfig.src}
+                                            alt="Foto do usuário"
+                                            className="profile-avatar-image"
+                                            style={getProfilePhotoStyle(profilePhotoConfig)}
+                                        />
+                                    ) : (
+                                        <span className="profile-avatar-initial">
+                                            {getUserInitial(sessionUser ? (sessionUser.name || sessionUser.email) : '')}
+                                        </span>
+                                    )}
+                                </button>
+                                <input
+                                    type="file"
+                                    accept="image/*"
+                                    ref={profilePhotoInputRef}
+                                    style={{ display: 'none' }}
+                                    onChange={handleSelectProfilePhoto}
+                                />
+                            </div>
                             <span id="loggedUserText">{sessionUser ? `${sessionUser.name || sessionUser.email} · ${sessionUser.email}` : ''}</span>
                             <span className="current-datetime" aria-live="polite">{nowLabel}</span>
                             <button id="logoutBtn" className="btn btn-secondary" type="button" onClick={() => handleLogout('Sessão encerrada com sucesso.')}>Sair</button>
@@ -2062,36 +2655,13 @@ function App() {
                                 </div>
                             </section>
 
-                            <DashboardCharts visible={activeView === 'dashboard'} data={dashboardChartsData} />
-
-                            <div className="dashboard-breakdown">
-                                <h3>Detalhamento percentual por categoria</h3>
-                                <div id="categoryPercentList" className="category-percent-list">
-                                    {categoryEntries.length === 0 ? (
-                                        <p className="empty-state">Nenhuma categoria para exibir ainda.</p>
-                                    ) : (
-                                        categoryEntries
-                                            .sort((a, b) => b[1].quantidade - a[1].quantidade)
-                                            .map(([categoria, info]) => {
-                                                const qtyPct = ((info.quantidade / totalCategoryQty) * 100).toFixed(1);
-                                                const valueShare = ((info.valor / totalCategoryValue) * 100).toFixed(1);
-                                                return (
-                                                    <div className="category-percent-item" key={categoria}>
-                                                        <header>
-                                                            <h4>{categoria}</h4>
-                                                            <span>{qtyPct}%</span>
-                                                        </header>
-                                                        <div className="progress-track"><div className="progress-fill" style={{ width: `${qtyPct}%` }}></div></div>
-                                                        <div className="category-meta">
-                                                            <span>{info.quantidade} itens</span>
-                                                            <span>{valueShare}% do valor</span>
-                                                        </div>
-                                                    </div>
-                                                );
-                                            })
-                                    )}
-                                </div>
-                            </div>
+                            <DashboardCharts
+                                visible={activeView === 'dashboard'}
+                                data={dashboardChartsData}
+                                categoryEntries={categoryEntries}
+                                totalCategoryQty={totalCategoryQty}
+                                totalCategoryValue={totalCategoryValue}
+                            />
                             </div>
                         </section>
 
@@ -2134,13 +2704,13 @@ function App() {
                                                     <option value={String(product.id)} key={product.id}>
                                                         {product.nome}
                                                         {product.patrimonio ? ` | Patrimônio: ${product.patrimonio}` : ''}
-                                                        {` - ${product.categoria} (estoque: ${Number(product.quantidade) || 0})`}
+                                                        {` - ${normalizeCategoryLabel(product.categoria)} (estoque: ${Number(product.quantidade) || 0})`}
                                                     </option>
                                                 ))}
                                             </select>
                                             {selectedMovementProduct ? (
                                                 <p className="movement-selected-product">
-                                                    Categoria: <strong>{selectedMovementProduct.categoria}</strong>
+                                                    Categoria: <strong>{normalizeCategoryLabel(selectedMovementProduct.categoria)}</strong>
                                                     {selectedMovementProduct.patrimonio ? <> | Patrimônio: <strong>{selectedMovementProduct.patrimonio}</strong></> : ''}
                                                     {' '}| Estoque atual: <strong>{Number(selectedMovementProduct.quantidade) || 0}</strong>
                                                 </p>
@@ -2591,11 +3161,11 @@ function App() {
                                                         </div>
                                                     </div>
                                                     <div className="category-header-right">
-                                                        <div className="category-stat">
+                                                        <div className="category-stat category-stat-qty">
                                                             <span className="stat-label">Qtd</span>
                                                             <span className={`stat-value ${emBaixa ? 'low' : ''}`}>{group.totalQuantidade}</span>
                                                         </div>
-                                                        <div className="category-stat">
+                                                        <div className="category-stat category-stat-value">
                                                             <span className="stat-label">Valor</span>
                                                             <span className="stat-value">{formatCurrency(group.totalValor)}</span>
                                                         </div>
@@ -2620,7 +3190,7 @@ function App() {
                                                                         <div className="product-item-info">
                                                                             <span className="product-item-name">{product.nome}</span>
                                                                             <span className="product-item-meta">
-                                                                                {product.patrimonio || 'Sem patrimônio'} • {product.categoria}
+                                                                                {product.patrimonio || 'Sem patrimônio'} • {normalizeCategoryLabel(product.categoria)}
                                                                             </span>
                                                                         </div>
                                                                     </div>
@@ -2738,7 +3308,7 @@ function App() {
                         <div style={{ display: 'grid', gap: '15px', marginTop: '20px' }}>
                             <div className="info-item">
                                 <div className="info-label">Categoria</div>
-                                <div className={`product-category ${getCategoryClassName(detailsProduct.categoria)}`} style={{ display: 'inline-block' }}>{detailsProduct.categoria}</div>
+                                    <div className={`product-category ${getCategoryClassName(normalizeCategoryLabel(detailsProduct.categoria))}`} style={{ display: 'inline-block' }}>{normalizeCategoryLabel(detailsProduct.categoria)}</div>
                             </div>
                             <div className="info-item">
                                 <div className="info-label">Nº de Patrimônio</div>
@@ -2768,6 +3338,83 @@ function App() {
                                 <div className="info-label">Atualizado em</div>
                                 <div>{formatDate(detailsProduct.dataAtualizacao)}</div>
                             </div>
+                        </div>
+                    </div>
+                </Modal>
+            ) : null}
+
+            {showProfilePhotoModal ? (
+                <Modal
+                    title="Foto do usuário"
+                    onClose={closeProfilePhotoModal}
+                    footer={(
+                        <>
+                            <button type="button" className="btn btn-secondary" onClick={() => profilePhotoInputRef.current?.click()}>Trocar foto</button>
+                            <button
+                                type="button"
+                                className="btn btn-danger"
+                                onClick={() => setProfilePhotoDraft({ ...DEFAULT_PROFILE_PHOTO_CONFIG })}
+                                disabled={!profilePhotoDraft.src}
+                            >
+                                Remover
+                            </button>
+                            <button type="button" className="btn btn-primary" onClick={handleSaveProfilePhotoAdjustments}>Salvar</button>
+                        </>
+                    )}
+                >
+                    <div className="profile-photo-modal-content">
+                        <div className="profile-photo-preview-box">
+                            {profilePhotoDraft.src ? (
+                                <img
+                                    src={profilePhotoDraft.src}
+                                    alt="Pré-visualização da foto"
+                                    className="profile-photo-preview-image"
+                                    style={getProfilePhotoStyle(profilePhotoDraft)}
+                                />
+                            ) : (
+                                <div className="profile-photo-preview-placeholder">Sem foto selecionada</div>
+                            )}
+                        </div>
+
+                        <div className="profile-photo-controls">
+                            <p className="auth-hint" style={{ margin: 0, color: '#334155' }}>
+                                Tamanho máximo da imagem: 4MB.
+                            </p>
+                            <label htmlFor="profilePhotoZoom">Zoom</label>
+                            <input
+                                id="profilePhotoZoom"
+                                type="range"
+                                min="1"
+                                max="2.5"
+                                step="0.05"
+                                value={profilePhotoDraft.zoom}
+                                disabled={!profilePhotoDraft.src}
+                                onChange={(event) => setProfilePhotoDraft((current) => ({ ...current, zoom: Number(event.target.value) || 1 }))}
+                            />
+
+                            <label htmlFor="profilePhotoOffsetX">Posição horizontal</label>
+                            <input
+                                id="profilePhotoOffsetX"
+                                type="range"
+                                min="-35"
+                                max="35"
+                                step="1"
+                                value={profilePhotoDraft.offsetX}
+                                disabled={!profilePhotoDraft.src}
+                                onChange={(event) => setProfilePhotoDraft((current) => ({ ...current, offsetX: Number(event.target.value) || 0 }))}
+                            />
+
+                            <label htmlFor="profilePhotoOffsetY">Posição vertical</label>
+                            <input
+                                id="profilePhotoOffsetY"
+                                type="range"
+                                min="-35"
+                                max="35"
+                                step="1"
+                                value={profilePhotoDraft.offsetY}
+                                disabled={!profilePhotoDraft.src}
+                                onChange={(event) => setProfilePhotoDraft((current) => ({ ...current, offsetY: Number(event.target.value) || 0 }))}
+                            />
                         </div>
                     </div>
                 </Modal>

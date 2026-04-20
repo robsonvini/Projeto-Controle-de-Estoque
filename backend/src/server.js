@@ -36,7 +36,7 @@ const xmlParser = new XMLParser({
     attributeNamePrefix: '@_'
 });
 
-const PRODUCT_CATEGORIES = ['Eletrônicos', 'Material de escritório'];
+const PRODUCT_CATEGORIES = ['Eletrônicos', 'Material de escritório', 'Armazenamento', 'Periféricos', 'Suprimentos de Impressão'];
 
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors({ origin: process.env.CORS_ORIGIN === '*' ? true : (process.env.CORS_ORIGIN || true) }));
@@ -189,6 +189,18 @@ function normalizeCategory(value) {
 
     if (normalized === 'material de escritorio') {
         return 'Material de escritório';
+    }
+
+    if (normalized === 'informatica' || normalized === 'armazenamento') {
+        return 'Armazenamento';
+    }
+
+    if (normalized === 'suprimentos de impressao') {
+        return 'Suprimentos de Impressão';
+    }
+
+    if (normalized === 'toner') {
+        return 'Suprimentos de Impressão';
     }
 
     return text;
@@ -347,6 +359,27 @@ async function loadUserState(userId) {
         products: db.products.filter((item) => item.userId === userId),
         movements: db.movements.filter((item) => item.userId === userId)
     };
+}
+
+async function migrateDbCategories() {
+    const db = await readDb();
+    let hasChanges = false;
+
+    db.products = db.products.map((product) => {
+        const normalizedCategory = normalizeCategory(product.categoria);
+        if (normalizedCategory !== product.categoria) {
+            hasChanges = true;
+        }
+
+        return {
+            ...product,
+            categoria: normalizedCategory || product.categoria || ''
+        };
+    });
+
+    if (hasChanges) {
+        await writeDb(db);
+    }
 }
 
 async function createBackup() {
@@ -1141,6 +1174,7 @@ app.use((error, req, res, next) => {
         appConfig = await loadConfig();
         applyBackupRuntimeConfig(appConfig);
         await ensureBackupsDir(BACKUPS_DIR);
+        await migrateDbCategories();
     } catch (error) {
         console.error('Erro ao carregar configuração:', error.message);
         process.exit(1);
