@@ -2,6 +2,7 @@ const { useEffect, useMemo, useRef, useState } = React;
 
 const PRODUCT_CATEGORIES = ['Eletrônicos', 'Material de escritório', 'Armazenamento', 'Periféricos', 'Suprimentos de Impressão'];
 const PRODUCT_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#14b8a6'];
+const SECTORS = ['TI', 'Administrativo', 'Financeiro', 'Recursos Humanos', 'Operações', 'Vendas', 'Marketing'];
 const BACKUP_SCHEDULE_DAYS = [
     { value: '0', label: 'Domingo' },
     { value: '1', label: 'Segunda-feira' },
@@ -183,6 +184,38 @@ class ApiClient {
         return this.request(`/products/${productId}/movements`, {
             method: 'POST',
             body: JSON.stringify(payload)
+        }, true);
+    }
+
+    getLoans(filters = {}) {
+        const params = new URLSearchParams();
+
+        if (filters.productId) params.set('productId', String(filters.productId));
+        if (filters.sector) params.set('sector', String(filters.sector));
+        if (filters.status) params.set('status', String(filters.status));
+
+        const query = params.toString();
+        return this.request(`/loans${query ? `?${query}` : ''}`, { method: 'GET' }, true);
+    }
+
+    createLoan(productId, payload) {
+        return this.request(`/products/${productId}/loans`, {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        }, true);
+    }
+
+    endLoan(loanId) {
+        return this.request(`/loans/${loanId}/return`, {
+            method: 'PUT',
+            body: JSON.stringify({})
+        }, true);
+    }
+
+    deleteLoan(loanId) {
+        return this.request(`/loans/${loanId}`, {
+            method: 'DELETE',
+            body: JSON.stringify({})
         }, true);
     }
 
@@ -1094,8 +1127,10 @@ function App() {
     const [token, setToken] = useState(() => api.token);
     const [products, setProducts] = useState([]);
     const [movements, setMovements] = useState([]);
+    const [loans, setLoans] = useState([]);
     const [loadingProducts, setLoadingProducts] = useState(false);
     const [loadingMovements, setLoadingMovements] = useState(false);
+    const [loadingLoans, setLoadingLoans] = useState(false);
     const [exportingKpiPdf, setExportingKpiPdf] = useState(false);
     const [backups, setBackups] = useState([]);
     const [loadingBackups, setLoadingBackups] = useState(false);
@@ -1147,6 +1182,13 @@ function App() {
         reason: ''
     });
     const [movementFilter, setMovementFilter] = useState({ productId: '', category: '', type: '', period: 'all', order: 'recent' });
+    const [loanForm, setLoanForm] = useState({
+        productId: '',
+        sector: '',
+        quantity: 1,
+        reason: ''
+    });
+    const [loanFilter, setLoanFilter] = useState({ productId: '', sector: '', status: 'active', order: 'recent' });
     const [profilePhotoConfig, setProfilePhotoConfig] = useState(() => ({ ...DEFAULT_PROFILE_PHOTO_CONFIG }));
     const [profilePhotoDraft, setProfilePhotoDraft] = useState(() => ({ ...DEFAULT_PROFILE_PHOTO_CONFIG }));
     const [showProfilePhotoModal, setShowProfilePhotoModal] = useState(false);
@@ -1245,6 +1287,28 @@ function App() {
         };
 
         loadMovements();
+    }, [bootstrapped, token]);
+
+    useEffect(() => {
+        if (!bootstrapped || !token) return undefined;
+
+        const loadLoans = async () => {
+            try {
+                setLoadingLoans(true);
+                const list = await api.getLoans();
+                setLoans(list);
+            } catch (error) {
+                if (error.status === 401) {
+                    handleLogout('Sessão expirada. Entre novamente.');
+                    return;
+                }
+                pushNotice(error.message || 'Erro ao carregar empréstimos.', 'error');
+            } finally {
+                setLoadingLoans(false);
+            }
+        };
+
+        loadLoans();
     }, [bootstrapped, token]);
 
     useEffect(() => {
@@ -1497,6 +1561,30 @@ function App() {
         [products]
     );
 
+    const inventoryAuditRows = useMemo(() => {
+        const list = [...products];
+        list.sort((a, b) => {
+            const categoryCompare = normalizeCategoryLabel(a.categoria).localeCompare(normalizeCategoryLabel(b.categoria), 'pt-BR');
+            if (categoryCompare !== 0) return categoryCompare;
+            return String(a.nome || '').localeCompare(String(b.nome || ''), 'pt-BR');
+        });
+        return list;
+    }, [products]);
+
+    const inventoryAuditSummary = useMemo(() => {
+        const totalProducts = inventoryAuditRows.length;
+        const totalItems = inventoryAuditRows.reduce((sum, item) => sum + (Number(item.quantidade) || 0), 0);
+        const totalValue = inventoryAuditRows.reduce((sum, item) => sum + ((Number(item.quantidade) || 0) * (Number(item.preco) || 0)), 0);
+        const lowCount = inventoryAuditRows.filter((item) => (Number(item.quantidade) || 0) < MIN_STOCK_THRESHOLD).length;
+
+        return {
+            totalProducts,
+            totalItems,
+            totalValue,
+            lowCount
+        };
+    }, [inventoryAuditRows]);
+
     const movementCategoryByProductId = useMemo(
         () => new Map(products.map((item) => [String(item.id), normalizeCategoryLabel(item.categoria)])),
         [products]
@@ -1696,6 +1784,41 @@ function App() {
 
         return list;
     }, [movements, movementFilter, movementCategoryByProductId]);
+
+    const filteredLoans = useMemo(() => {
+        let list = [...loans];
+
+        if (loanFilter.productId) {
+            list = list.filter((item) => String(item.productId) === String(loanFilter.productId));
+        }
+
+        if (loanFilter.sector) {
+            list = list.filter((item) => item.sector === loanFilter.sector);
+        }
+
+        if (loanFilter.status && loanFilter.status !== 'all') {
+            if (loanFilter.status === 'active') {
+                list = list.filter((item) => !item.returnedAt);
+            } else if (loanFilter.status === 'returned') {
+                list = list.filter((item) => item.returnedAt);
+            }
+        }
+
+        list.sort((a, b) => {
+            const dateA = parseDate(a.createdAt);
+            const dateB = parseDate(b.createdAt);
+            const timeA = dateA ? dateA.getTime() : 0;
+            const timeB = dateB ? dateB.getTime() : 0;
+
+            if (loanFilter.order === 'oldest') {
+                return timeA - timeB;
+            }
+
+            return timeB - timeA;
+        });
+
+        return list;
+    }, [loans, loanFilter]);
 
     const movementSummary = useMemo(() => {
         const total = filteredMovements.length;
@@ -1969,6 +2092,20 @@ function App() {
                 notify(error.message || 'Não foi possível atualizar as movimentações.', 'error');
             }
         }
+
+        async function loadLoansAfterChange() {
+            try {
+                const list = await api.getLoans();
+                setLoans(list);
+            } catch (error) {
+                if (error.status === 401) {
+                    handleLogout('Sessão expirada. Entre novamente.');
+                    return;
+                }
+                notify(error.message || 'Não foi possível atualizar os empréstimos.', 'error');
+            }
+        }
+
         try {
             const list = await api.getProducts();
             setProducts(list);
@@ -1980,6 +2117,7 @@ function App() {
             notify(error.message || 'Não foi possível atualizar os produtos.', 'error');
         }
         await loadMovementsAfterChange();
+        await loadLoansAfterChange();
     }
 
     async function handleLogin(event) {
@@ -2265,6 +2403,100 @@ function App() {
         }
     }
 
+    async function handleCreateLoan(event) {
+        event.preventDefault();
+
+        const parsedProductId = Math.trunc(parseFlexibleNumber(loanForm.productId, NaN));
+        const productId = parsedProductId;
+        const quantity = Math.trunc(parseFlexibleNumber(loanForm.quantity, NaN));
+        const sector = String(loanForm.sector || '').trim();
+        const reason = String(loanForm.reason || '').trim();
+
+        if (!Number.isFinite(productId) || productId < 1) {
+            notify('Selecione um produto válido para empréstimo.', 'error');
+            return;
+        }
+
+        const product = products.find((item) => Number(item.id) === productId);
+        if (!product) {
+            notify('O produto selecionado não foi encontrado.', 'error');
+            return;
+        }
+
+        if (!sector) {
+            notify('Selecione um setor para delegar o empréstimo.', 'error');
+            return;
+        }
+
+        if (!Number.isFinite(quantity) || quantity < 1) {
+            notify('Informe uma quantidade válida maior que zero.', 'error');
+            return;
+        }
+
+        try {
+            const payload = {
+                sector,
+                quantity,
+                reason
+            };
+
+            const result = await api.createLoan(productId, payload);
+            setProducts((current) => current.map((item) => (String(item.id) === String(result.product.id) ? result.product : item)));
+            setLoans((current) => [result.loan, ...current]);
+
+            setLoanForm({ productId: '', sector: '', quantity: 1, reason: '' });
+            notify('Empréstimo registrado com sucesso!', 'success');
+        } catch (error) {
+            if (error.status === 401) {
+                handleLogout('Sessão expirada. Entre novamente.');
+                return;
+            }
+            notify(error.message || 'Não foi possível registrar o empréstimo.', 'error');
+        }
+    }
+
+    async function handleEndLoan(loan) {
+        if (!confirm('Tem certeza que deseja finalizar este empréstimo? O produto será devolvido ao estoque.')) return;
+
+        try {
+            const result = await api.endLoan(loan.id);
+
+            if (result?.product) {
+                setProducts((current) => current.map((item) => (String(item.id) === String(result.product.id) ? result.product : item)));
+            }
+
+            setLoans((current) => current.map((item) => (String(item.id) === String(loan.id) ? result.loan : item)));
+            notify('Empréstimo finalizado com sucesso!', 'success');
+        } catch (error) {
+            if (error.status === 401) {
+                handleLogout('Sessão expirada. Entre novamente.');
+                return;
+            }
+            notify(error.message || 'Não foi possível finalizar o empréstimo.', 'error');
+        }
+    }
+
+    async function handleDeleteLoan(loan) {
+        if (!confirm('Tem certeza que deseja deletar este empréstimo?')) return;
+
+        try {
+            const result = await api.deleteLoan(loan.id);
+
+            if (result?.product) {
+                setProducts((current) => current.map((item) => (String(item.id) === String(result.product.id) ? result.product : item)));
+            }
+
+            setLoans((current) => current.filter((item) => String(item.id) !== String(loan.id)));
+            notify('Empréstimo deletado com sucesso!', 'success');
+        } catch (error) {
+            if (error.status === 401) {
+                handleLogout('Sessão expirada. Entre novamente.');
+                return;
+            }
+            notify(error.message || 'Não foi possível deletar o empréstimo.', 'error');
+        }
+    }
+
     async function handleImportFile(event) {
         const file = event.target.files[0];
         if (!file) return;
@@ -2279,13 +2511,11 @@ function App() {
                 await api.importProducts(Array.isArray(items) ? items : []);
             } else if (extension === 'xml') {
                 await api.importXml(await file.text());
-                                                    <th>Ações</th>
             } else if (extension === 'xlsx' || extension === 'xls' || extension === 'pdf') {
                 await api.importFile(file);
             } else {
                 throw new Error('Formato não suportado. Use JSON, XML, XLSX ou PDF.');
             }
-                                                        <td colSpan="10" className="movement-empty">Nenhuma movimentação registrada.</td>
             await loadProductsAfterChange();
             notify('Dados importados com sucesso!', 'success');
         } catch (error) {
@@ -2907,7 +3137,9 @@ function App() {
                         </div>
                         <div className="view-tabs">
                             <button id="inventoryViewBtn" className={`view-tab ${activeView === 'inventory' ? 'active' : ''}`} type="button" onClick={() => setActiveView('inventory')}>Estoque</button>
+                            <button id="stockAuditViewBtn" className={`view-tab ${activeView === 'stock-audit' ? 'active' : ''}`} type="button" onClick={() => setActiveView('stock-audit')}>Inventário</button>
                             <button id="movementsViewBtn" className={`view-tab ${activeView === 'movements' ? 'active' : ''}`} type="button" onClick={() => setActiveView('movements')}>Movimentações</button>
+                            <button id="loansViewBtn" className={`view-tab ${activeView === 'loans' ? 'active' : ''}`} type="button" onClick={() => setActiveView('loans')}>📤 Empréstimos</button>
                             <button id="dashboardViewBtn" className={`view-tab ${activeView === 'dashboard' ? 'active' : ''}`} type="button" onClick={() => setActiveView('dashboard')}>Dashboard</button>
                             <button id="backupsViewBtn" className={`view-tab ${activeView === 'backups' ? 'active' : ''}`} type="button" onClick={() => setActiveView('backups')}>💾 Backups</button>
                         </div>
@@ -3225,12 +3457,13 @@ function App() {
                                                     <th>Qtd</th>
                                                     <th>Saldo</th>
                                                     <th>Motivo</th>
+                                                    <th>Ações</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
                                                 {filteredMovements.length === 0 && !loadingMovements ? (
                                                     <tr>
-                                                        <td colSpan="9" className="movement-empty">Nenhuma movimentação registrada.</td>
+                                                        <td colSpan="10" className="movement-empty">Nenhuma movimentação registrada.</td>
                                                     </tr>
                                                 ) : null}
                                                 {filteredMovements.map((movement) => (
@@ -3263,6 +3496,224 @@ function App() {
                                                         </td>
                                                     </tr>
                                                 ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </section>
+                            </section>
+                        </div>
+
+                        <div className={`app-view ${activeView === 'loans' ? 'active' : ''}`} data-view="loans">
+                            <section className="loans-section">
+                                <div className="section-heading">
+                                    <h2>Empréstimo de Peças</h2>
+                                    <p>Registre empréstimos de peças para diferentes setores e acompanhe as devoluções.</p>
+                                </div>
+
+                                <div className="loans-layout">
+                                    <form className="loans-form" onSubmit={handleCreateLoan}>
+                                        <div className="form-group">
+                                            <label htmlFor="loanProduct">Produto</label>
+                                            <select
+                                                id="loanProduct"
+                                                value={loanForm.productId}
+                                                onChange={(event) => setLoanForm((current) => ({ ...current, productId: event.target.value }))}
+                                                required
+                                            >
+                                                <option value="">Selecione um produto</option>
+                                                {products.map((product) => (
+                                                    <option value={String(product.id)} key={product.id}>
+                                                        {product.nome}
+                                                        {product.patrimonio ? ` | Patrimônio: ${product.patrimonio}` : ''}
+                                                        {` - (estoque: ${Number(product.quantidade) || 0})`}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
+
+                                        <div className="form-group">
+                                            <label htmlFor="loanSector">Setor</label>
+                                            <input
+                                                id="loanSector"
+                                                type="text"
+                                                list="loanSectorSuggestions"
+                                                placeholder="Digite o setor ou escolha uma sugestão"
+                                                value={loanForm.sector}
+                                                onChange={(event) => setLoanForm((current) => ({ ...current, sector: event.target.value }))}
+                                                required
+                                            />
+                                            <datalist id="loanSectorSuggestions">
+                                                {SECTORS.map((sector) => (
+                                                    <option value={sector} key={sector} />
+                                                ))}
+                                            </datalist>
+                                        </div>
+
+                                        <div className="form-row">
+                                            <div className="form-group">
+                                                <label htmlFor="loanQuantity">Quantidade</label>
+                                                <input
+                                                    id="loanQuantity"
+                                                    type="number"
+                                                    min="1"
+                                                    value={loanForm.quantity}
+                                                    onChange={(event) => setLoanForm((current) => ({ ...current, quantity: event.target.value }))}
+                                                    required
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div className="form-group">
+                                            <label htmlFor="loanReason">Motivo do empréstimo</label>
+                                            <input
+                                                id="loanReason"
+                                                type="text"
+                                                placeholder="Ex: Manutenção, teste, reposição temporária"
+                                                value={loanForm.reason}
+                                                onChange={(event) => setLoanForm((current) => ({ ...current, reason: event.target.value }))}
+                                            />
+                                        </div>
+
+                                        <button type="submit" className="btn btn-primary" disabled={!products.length}>Registrar empréstimo</button>
+                                    </form>
+
+                                    <div className="loans-filter-card">
+                                        <h3>Filtros do histórico</h3>
+                                        <div className="form-group">
+                                            <label htmlFor="loanFilterProduct">Produto</label>
+                                            <select
+                                                id="loanFilterProduct"
+                                                value={loanFilter.productId}
+                                                onChange={(event) => setLoanFilter((current) => ({ ...current, productId: event.target.value }))}
+                                            >
+                                                <option value="">Todos os produtos</option>
+                                                {products.map((product) => (
+                                                    <option value={String(product.id)} key={`loan_filter_${product.id}`}>
+                                                        {product.nome}
+                                                        {product.patrimonio ? ` | Patrimônio: ${product.patrimonio}` : ''}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
+
+                                        <div className="form-group">
+                                            <label htmlFor="loanFilterSector">Setor</label>
+                                            <select
+                                                id="loanFilterSector"
+                                                value={loanFilter.sector}
+                                                onChange={(event) => setLoanFilter((current) => ({ ...current, sector: event.target.value }))}
+                                            >
+                                                <option value="">Todos os setores</option>
+                                                {SECTORS.map((sector) => (
+                                                    <option value={sector} key={`loan_sector_${sector}`}>{sector}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+
+                                        <div className="form-group">
+                                            <label htmlFor="loanFilterStatus">Status</label>
+                                            <select
+                                                id="loanFilterStatus"
+                                                value={loanFilter.status}
+                                                onChange={(event) => setLoanFilter((current) => ({ ...current, status: event.target.value }))}
+                                            >
+                                                <option value="active">Ativos</option>
+                                                <option value="returned">Devolvidos</option>
+                                                <option value="all">Todos</option>
+                                            </select>
+                                        </div>
+
+                                        <div className="form-group">
+                                            <label htmlFor="loanFilterOrder">Ordenação</label>
+                                            <select
+                                                id="loanFilterOrder"
+                                                value={loanFilter.order}
+                                                onChange={(event) => setLoanFilter((current) => ({ ...current, order: event.target.value }))}
+                                            >
+                                                <option value="recent">Mais recentes primeiro</option>
+                                                <option value="oldest">Mais antigos primeiro</option>
+                                            </select>
+                                        </div>
+
+                                        <div className="loans-filter-actions">
+                                            <button
+                                                type="button"
+                                                className="btn btn-secondary"
+                                                onClick={() => setLoanFilter({ productId: '', sector: '', status: 'active', order: 'recent' })}
+                                            >
+                                                Limpar filtros
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <section className="loans-history">
+                                    <h3>Histórico de empréstimos</h3>
+                                    {loadingLoans ? <p className="empty-state">Carregando empréstimos...</p> : null}
+                                    <div className="loans-table-wrap">
+                                        <table className="loans-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>Data</th>
+                                                    <th>Produto</th>
+                                                    <th>Patrimônio</th>
+                                                    <th>Setor</th>
+                                                    <th>Quantidade</th>
+                                                    <th>Motivo</th>
+                                                    <th>Status</th>
+                                                    <th>Data de devolução</th>
+                                                    <th>Ações</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {filteredLoans.length === 0 && !loadingLoans ? (
+                                                    <tr>
+                                                        <td colSpan="9" className="loans-empty">Nenhum empréstimo registrado.</td>
+                                                    </tr>
+                                                ) : null}
+                                                {filteredLoans.map((loan) => {
+                                                    const product = products.find(p => String(p.id) === String(loan.productId));
+                                                    return (
+                                                        <tr key={loan.id}>
+                                                            <td>{formatDate(loan.createdAt)}</td>
+                                                            <td>{product?.nome || loan.productName || '-'}</td>
+                                                            <td>{product?.patrimonio || '-'}</td>
+                                                            <td>{loan.sector}</td>
+                                                            <td>{loan.quantity}</td>
+                                                            <td>{loan.reason || '-'}</td>
+                                                            <td>
+                                                                <span className={`loan-status-badge ${loan.returnedAt ? 'returned' : 'active'}`}>
+                                                                    {loan.returnedAt ? '✓ Devolvido' : '◯ Ativo'}
+                                                                </span>
+                                                            </td>
+                                                            <td>{loan.returnedAt ? formatDate(loan.returnedAt) : '-'}</td>
+                                                            <td>
+                                                                <div className="loan-actions">
+                                                                    {!loan.returnedAt ? (
+                                                                        <button
+                                                                            className="action-btn return"
+                                                                            type="button"
+                                                                            onClick={() => handleEndLoan(loan)}
+                                                                            title="Marcar como devolvido"
+                                                                            aria-label="Marcar como devolvido"
+                                                                        >
+                                                                            ✓
+                                                                        </button>
+                                                                    ) : null}
+                                                                    <button
+                                                                        className="action-btn delete"
+                                                                        type="button"
+                                                                        onClick={() => handleDeleteLoan(loan)}
+                                                                        title="Excluir empréstimo"
+                                                                        aria-label="Excluir empréstimo"
+                                                                    >
+                                                                        🗑️
+                                                                    </button>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
                                             </tbody>
                                         </table>
                                     </div>
@@ -3383,6 +3834,87 @@ function App() {
                                     </div>
                                 </section>
                             )}
+                        </div>
+
+                        <div className={`app-view ${activeView === 'stock-audit' ? 'active' : ''}`} data-view="stock-audit">
+                            <section className="inventory-audit-section">
+                                <div className="section-heading">
+                                    <h2>Inventário de Estoque</h2>
+                                    <p>Visualização consolidada de todos os produtos, com quantidade, valor e status de estoque.</p>
+                                </div>
+
+                                <div className="inventory-audit-toolbar">
+                                    <button type="button" className="btn btn-secondary" onClick={handleExportXlsx}>📊 Exportar Inventário (XLSX)</button>
+                                    <button type="button" className="btn btn-secondary" onClick={handleExportPdf}>🧾 Exportar Inventário (PDF)</button>
+                                </div>
+
+                                <div className="inventory-audit-summary">
+                                    <article className="inventory-audit-card">
+                                        <span>Total de produtos</span>
+                                        <strong>{inventoryAuditSummary.totalProducts}</strong>
+                                    </article>
+                                    <article className="inventory-audit-card">
+                                        <span>Itens em estoque</span>
+                                        <strong>{inventoryAuditSummary.totalItems}</strong>
+                                    </article>
+                                    <article className="inventory-audit-card">
+                                        <span>Valor em estoque</span>
+                                        <strong>{formatCurrency(inventoryAuditSummary.totalValue)}</strong>
+                                    </article>
+                                    <article className="inventory-audit-card alert">
+                                        <span>Produtos com estoque baixo</span>
+                                        <strong>{inventoryAuditSummary.lowCount}</strong>
+                                    </article>
+                                </div>
+
+                                {loadingProducts ? <p className="empty-state">Carregando inventário...</p> : null}
+                                <div className="inventory-audit-table-wrap">
+                                    <table className="inventory-audit-table">
+                                        <thead>
+                                            <tr>
+                                                <th>#</th>
+                                                <th>Produto</th>
+                                                <th>Patrimônio</th>
+                                                <th>Categoria</th>
+                                                <th>Estoque</th>
+                                                <th>Preço Unitário</th>
+                                                <th>Valor em Estoque</th>
+                                                <th>Atualizado em</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {inventoryAuditRows.length === 0 && !loadingProducts ? (
+                                                <tr>
+                                                    <td colSpan="8" className="movement-empty">Nenhum item no inventário.</td>
+                                                </tr>
+                                            ) : null}
+
+                                            {inventoryAuditRows.map((product, index) => {
+                                                const quantity = Number(product.quantidade) || 0;
+                                                const stockValue = quantity * (Number(product.preco) || 0);
+                                                const isLow = quantity < MIN_STOCK_THRESHOLD;
+
+                                                return (
+                                                    <tr key={product.id}>
+                                                        <td>{index + 1}</td>
+                                                        <td>{product.nome || '-'}</td>
+                                                        <td>{product.patrimonio || '-'}</td>
+                                                        <td>{normalizeCategoryLabel(product.categoria)}</td>
+                                                        <td>
+                                                            <span className={`inventory-audit-stock ${isLow ? 'low' : 'normal'}`}>
+                                                                {quantity}
+                                                            </span>
+                                                        </td>
+                                                        <td>{formatCurrency(product.preco)}</td>
+                                                        <td>{formatCurrency(stockValue)}</td>
+                                                        <td>{product.dataAtualizacao || product.dataCriacao || '-'}</td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </section>
                         </div>
 
                         <div className={`app-view ${activeView === 'inventory' ? 'active' : ''}`} data-view="inventory">

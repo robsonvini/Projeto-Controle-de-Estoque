@@ -357,7 +357,8 @@ async function loadUserState(userId) {
         db,
         user: db.users.find((item) => item.id === userId) || null,
         products: db.products.filter((item) => item.userId === userId),
-        movements: db.movements.filter((item) => item.userId === userId)
+        movements: db.movements.filter((item) => item.userId === userId),
+        loans: Array.isArray(db.loans) ? db.loans.filter((item) => item.userId === userId) : []
     };
 }
 
@@ -874,6 +875,145 @@ app.delete('/api/movements/:id', authenticateToken, async (req, res) => {
     }
 });
 
+app.get('/api/loans', authenticateToken, async (req, res) => {
+    try {
+        const db = await readDb();
+        if (!Array.isArray(db.loans)) {
+            db.loans = [];
+        }
+        const loans = db.loans.filter((item) => item.userId === req.auth.id);
+        res.json(loans);
+    } catch (error) {
+        sendError(res, error);
+    }
+});
+
+app.post('/api/products/:id/loans', authenticateToken, async (req, res) => {
+    try {
+        const productId = Number(req.params.id);
+        const { sector, quantity, reason } = req.body;
+
+        if (!sector || !Number.isFinite(quantity) || quantity < 1) {
+            throw buildError('Dados do empréstimo inválidos.', 400);
+        }
+
+        const db = await readDb();
+        if (!Array.isArray(db.loans)) {
+            db.loans = [];
+        }
+        const product = db.products.find((item) => item.id === productId && item.userId === req.auth.id);
+
+        if (!product) {
+            throw buildError('Produto não encontrado.', 404);
+        }
+
+        const currentQuantity = parseNumber(product.quantidade, 0);
+        if (currentQuantity < quantity) {
+            throw buildError('Quantidade em estoque insuficiente para o empréstimo.', 409);
+        }
+
+        const loan = {
+            id: createTimestamp(),
+            userId: req.auth.id,
+            productId,
+            productName: product.nome,
+            sector,
+            quantity: parseNumber(quantity, 1),
+            reason: String(reason || '').trim(),
+            createdAt: createTimestamp(),
+            returnedAt: null
+        };
+
+        product.quantidade = currentQuantity - quantity;
+        product.dataAtualizacao = formatDateBR();
+        product.updatedAt = createTimestamp();
+
+        db.loans.push(loan);
+        await writeDb(db);
+
+        res.status(201).json({
+            loan,
+            product
+        });
+    } catch (error) {
+        sendError(res, error);
+    }
+});
+
+app.put('/api/loans/:id/return', authenticateToken, async (req, res) => {
+    try {
+        const loanId = Number(req.params.id);
+        const db = await readDb();
+        if (!Array.isArray(db.loans)) {
+            db.loans = [];
+        }
+        const loan = db.loans.find((item) => item.id === loanId && item.userId === req.auth.id);
+
+        if (!loan) {
+            throw buildError('Empréstimo não encontrado.', 404);
+        }
+
+        if (loan.returnedAt) {
+            throw buildError('Este empréstimo já foi devolvido.', 400);
+        }
+
+        const product = db.products.find((item) => item.id === loan.productId && item.userId === req.auth.id);
+
+        if (product) {
+            const quantity = parseNumber(loan.quantity, 0);
+            const nextQuantity = parseNumber(product.quantidade, 0) + quantity;
+
+            product.quantidade = nextQuantity;
+            product.dataAtualizacao = formatDateBR();
+            product.updatedAt = createTimestamp();
+        }
+
+        loan.returnedAt = new Date().toISOString();
+
+        await writeDb(db);
+        res.json({ loan, product });
+    } catch (error) {
+        sendError(res, error);
+    }
+});
+
+app.delete('/api/loans/:id', authenticateToken, async (req, res) => {
+    try {
+        const loanId = Number(req.params.id);
+        const db = await readDb();
+        if (!Array.isArray(db.loans)) {
+            db.loans = [];
+        }
+        const loanIndex = db.loans.findIndex((item) => item.id === loanId && item.userId === req.auth.id);
+
+        if (loanIndex < 0) {
+            throw buildError('Empréstimo não encontrado.', 404);
+        }
+
+        const [loan] = db.loans.splice(loanIndex, 1);
+        let updatedProduct = null;
+
+        if (!loan.returnedAt) {
+            const product = db.products.find((item) => item.id === loan.productId && item.userId === req.auth.id);
+
+            if (product) {
+                const quantity = parseNumber(loan.quantity, 0);
+                const nextQuantity = parseNumber(product.quantidade, 0) + quantity;
+
+                product.quantidade = nextQuantity;
+                product.dataAtualizacao = formatDateBR();
+                product.updatedAt = createTimestamp();
+                updatedProduct = product;
+            }
+        }
+
+        await writeDb(db);
+        res.json({ loan, product: updatedProduct });
+    } catch (error) {
+        sendError(res, error);
+    }
+});
+
 async function buildProductsWorkbook(userId) {
     const { products } = await loadUserState(userId);
     // Evita que textos começando com =, +, -, @ sejam interpretados como fórmulas no Excel.
@@ -887,12 +1027,10 @@ async function buildProductsWorkbook(userId) {
     };
 
     const rows = products.map((product) => {
-        const id = Number(product.id);
         const quantidade = Number(product.quantidade);
         const preco = Number(product.preco);
 
         return [
-            Number.isFinite(id) ? id : toSafeExcelText(product.id),
             toSafeExcelText(product.nome),
             toSafeExcelText(product.patrimonio || 'Sem patrimônio'),
             toSafeExcelText(product.categoria),
@@ -905,12 +1043,11 @@ async function buildProductsWorkbook(userId) {
     });
 
     const worksheet = XLSX.utils.aoa_to_sheet([
-        ['ID', 'Nome', 'Patrimonio', 'Categoria', 'Quantidade', 'Preco', 'Descricao', 'DataCriacao', 'DataAtualizacao'],
+        ['Nome', 'Patrimonio', 'Categoria', 'Quantidade', 'Preco', 'Descricao', 'DataCriacao', 'DataAtualizacao'],
         ...rows
     ]);
 
     worksheet['!cols'] = [
-        { wch: 12 },
         { wch: 28 },
         { wch: 20 },
         { wch: 22 },
