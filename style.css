@@ -1172,6 +1172,17 @@ header .subtitle {
     background: #f8fafc;
 }
 
+.movement-actions {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+}
+
+.movement-actions .action-btn {
+    padding: 6px 8px;
+}
+
 .movement-empty {
     text-align: center !important;
     color: #334155;

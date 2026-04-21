@@ -140,6 +140,10 @@ class ApiClient {
         return this.request(`/products/${id}`, { method: 'DELETE' }, true);
     }
 
+    deleteMovement(id) {
+        return this.request(`/movements/${id}`, { method: 'DELETE' }, true);
+    }
+
     importProducts(products) {
         return this.request('/products/import', {
             method: 'POST',
@@ -1377,16 +1381,7 @@ function App() {
                 };
             }
 
-            const firstProduct = products[0];
-            if (!firstProduct) {
-                return current;
-            }
-
-            return {
-                ...current,
-                category: normalizeCategoryLabel(firstProduct.categoria),
-                productId: String(firstProduct.id)
-            };
+            return current;
         });
     }, [products]);
 
@@ -2249,6 +2244,27 @@ function App() {
         }
     }
 
+    async function handleDeleteMovement(movement) {
+        if (!confirm('Tem certeza que deseja excluir esta movimentação? O estoque será ajustado.')) return;
+
+        try {
+            const result = await api.deleteMovement(movement.id);
+
+            if (result?.product) {
+                setProducts((current) => current.map((item) => (String(item.id) === String(result.product.id) ? result.product : item)));
+            }
+
+            setMovements((current) => current.filter((item) => String(item.id) !== String(movement.id)));
+            notify('Movimentação excluída com sucesso!', 'success');
+        } catch (error) {
+            if (error.status === 401) {
+                handleLogout('Sessão expirada. Entre novamente.');
+                return;
+            }
+            notify(error.message || 'Não foi possível excluir a movimentação.', 'error');
+        }
+    }
+
     async function handleImportFile(event) {
         const file = event.target.files[0];
         if (!file) return;
@@ -2263,12 +2279,13 @@ function App() {
                 await api.importProducts(Array.isArray(items) ? items : []);
             } else if (extension === 'xml') {
                 await api.importXml(await file.text());
+                                                    <th>Ações</th>
             } else if (extension === 'xlsx' || extension === 'xls' || extension === 'pdf') {
                 await api.importFile(file);
             } else {
                 throw new Error('Formato não suportado. Use JSON, XML, XLSX ou PDF.');
             }
-
+                                                        <td colSpan="10" className="movement-empty">Nenhuma movimentação registrada.</td>
             await loadProductsAfterChange();
             notify('Dados importados com sucesso!', 'success');
         } catch (error) {
@@ -3231,6 +3248,19 @@ function App() {
                                                         <td>{movement.quantity}</td>
                                                         <td>{movement.previousStock} → {movement.newStock}</td>
                                                         <td>{movement.reason}</td>
+                                                        <td>
+                                                            <div className="movement-actions">
+                                                                <button
+                                                                    className="action-btn delete"
+                                                                    type="button"
+                                                                    onClick={() => handleDeleteMovement(movement)}
+                                                                    title="Excluir movimentação"
+                                                                    aria-label="Excluir movimentação"
+                                                                >
+                                                                    🗑️
+                                                                </button>
+                                                            </div>
+                                                        </td>
                                                     </tr>
                                                 ))}
                                             </tbody>

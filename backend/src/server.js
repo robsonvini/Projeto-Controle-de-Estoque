@@ -836,6 +836,44 @@ app.post('/api/products/:id/movements', authenticateToken, async (req, res) => {
     }
 });
 
+app.delete('/api/movements/:id', authenticateToken, async (req, res) => {
+    try {
+        const movementId = Number(req.params.id);
+        const db = await readDb();
+        const movementIndex = db.movements.findIndex((item) => item.id === movementId && item.userId === req.auth.id);
+
+        if (movementIndex < 0) {
+            throw buildError('Movimentação não encontrada.', 404);
+        }
+
+        const [movement] = db.movements.splice(movementIndex, 1);
+        let updatedProduct = null;
+
+        const productId = Number(movement.productId);
+        const product = db.products.find((item) => item.id === productId && item.userId === req.auth.id);
+
+        if (product) {
+            const quantity = parseNumber(movement.quantity, 0);
+            const delta = movement.type === 'entrada' ? -quantity : quantity;
+            const nextQuantity = parseNumber(product.quantidade, 0) + delta;
+
+            if (nextQuantity < 0) {
+                throw buildError('Não foi possível ajustar o estoque após excluir a movimentação.', 409);
+            }
+
+            product.quantidade = nextQuantity;
+            product.dataAtualizacao = formatDateBR();
+            product.updatedAt = createTimestamp();
+            updatedProduct = product;
+        }
+
+        await writeDb(db);
+        res.json({ movement, product: updatedProduct });
+    } catch (error) {
+        sendError(res, error);
+    }
+});
+
 async function buildProductsWorkbook(userId) {
     const { products } = await loadUserState(userId);
     // Evita que textos começando com =, +, -, @ sejam interpretados como fórmulas no Excel.

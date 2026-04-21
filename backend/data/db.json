@@ -22,7 +22,7 @@
       "dataCriacao": "20/04/2026",
       "dataAtualizacao": "20/04/2026",
       "createdAt": "2026-04-20T18:17:14.832Z",
-      "updatedAt": "2026-04-20T20:58:33.343Z"
+      "updatedAt": "2026-04-21T02:29:57.133Z"
     },
     {
       "id": 1776640439990,
@@ -135,6 +135,30 @@
     }
   ],
   "movements": [
+    {
+      "id": 1776737918425,
+      "userId": 1775675197663,
+      "productId": 1776709034847,
+      "productName": "SSD Kingston",
+      "type": "saida",
+      "quantity": 1,
+      "reason": "disponibilizado para outro setor",
+      "previousStock": 11,
+      "newStock": 10,
+      "createdAt": "2026-04-21T02:18:38.425Z"
+    },
+    {
+      "id": 1776737827712,
+      "userId": 1775675197663,
+      "productId": 1776709034847,
+      "productName": "SSD Kingston",
+      "type": "entrada",
+      "quantity": 1,
+      "reason": "Compra",
+      "previousStock": 10,
+      "newStock": 11,
+      "createdAt": "2026-04-21T02:17:07.712Z"
+    },
     {
       "id": 1776718713351,
       "userId": 1775675197663,
