@@ -100,6 +100,11 @@
                         'https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js'
                     ], function () { return !!(window.jspdf && window.jspdf.jsPDF); });
 
+                    await loadWithFallback('QRCode', [
+                        'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js',
+                        'https://unpkg.com/qrcodejs'
+                    ], function () { return !!window.QRCode; });
+
                     var response = await fetch('app.jsx', { cache: 'no-store' });
                     if (!response.ok) {
                         throw new Error('Não foi possível baixar app.jsx (HTTP ' + response.status + ').');

@@ -1172,6 +1172,7 @@ function App() {
     const [loginForm, setLoginForm] = useState({ email: '', password: '', remember: false });
     const [registerForm, setRegisterForm] = useState({ name: '', email: '', password: '', confirmPassword: '' });
     const [recoveryForm, setRecoveryForm] = useState({ email: '', newPassword: '', confirmPassword: '' });
+    const [showQRCode, setShowQRCode] = useState(false);
     const [dashboardTick, setDashboardTick] = useState(0);
     const [now, setNow] = useState(() => new Date());
     const [movementForm, setMovementForm] = useState({
@@ -1339,6 +1340,29 @@ function App() {
 
         loadBackupsData();
     }, [bootstrapped, token]);
+
+    useEffect(() => {
+        if (!showQRCode) return;
+
+        const qrcodeContainer = document.getElementById('qrcodeContainer');
+        if (!qrcodeContainer) return;
+
+        qrcodeContainer.innerHTML = '';
+
+        if (typeof window.QRCode !== 'undefined') {
+            // Usar o IP local detalhado: 192.168.1.103:3000
+            const mobileUrl = 'http://192.168.1.103:3000';
+
+            new window.QRCode(qrcodeContainer, {
+                text: mobileUrl,
+                width: 200,
+                height: 200,
+                colorDark: '#0f172a',
+                colorLight: '#ffffff',
+                correctLevel: window.QRCode.CorrectLevel.H
+            });
+        }
+    }, [showQRCode]);
 
     useEffect(() => {
         const timer = setInterval(() => {
@@ -2852,6 +2876,15 @@ function App() {
                                     </div>
                                 </div>
 
+                                <button
+                                    type="button"
+                                    className="btn btn-secondary"
+                                    onClick={() => setShowQRCode(!showQRCode)}
+                                    style={{ marginTop: '20px', width: '100%' }}
+                                >
+                                    📱 Acessar pelo Mobile
+                                </button>
+
                                 <ul className="auth-points">
                                     <li>Fluxo enxuto para login, cadastro e recuperação.</li>
                                     <li>Campos com foco claro e feedback imediato.</li>
@@ -3036,6 +3069,53 @@ function App() {
                             </section>
                         </div>
                     </div>
+
+                    {showQRCode && (
+                        <div
+                            style={{
+                                position: 'fixed',
+                                top: 0,
+                                left: 0,
+                                right: 0,
+                                bottom: 0,
+                                background: 'rgba(0, 0, 0, 0.5)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                zIndex: 2000
+                            }}
+                            onClick={() => setShowQRCode(false)}
+                        >
+                            <div
+                                style={{
+                                    background: 'white',
+                                    padding: '30px',
+                                    borderRadius: '12px',
+                                    textAlign: 'center',
+                                    maxWidth: '300px',
+                                    boxShadow: '0 20px 60px rgba(0, 0, 0, 0.3)'
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                            >
+                                <h3 style={{ margin: '0 0 10px 0', color: '#0f172a' }}>Acessar pelo Mobile</h3>
+                                <p style={{ margin: '0 0 20px 0', color: '#64748b', fontSize: '14px' }}>Aponte a câmera do seu celular para este QRCode</p>
+                                <div id="qrcodeContainer" style={{ display: 'flex', justifyContent: 'center', margin: '20px 0' }}></div>
+                                <p style={{ margin: '20px 0 0 0', color: '#94a3b8', fontSize: '12px' }}>
+                                    <strong>URL:</strong> http://192.168.1.103:3000
+                                    <br />
+                                    <strong>IP:</strong> 192.168.1.103 | <strong>Porta:</strong> 3000
+                                </p>
+                                <button
+                                    type="button"
+                                    className="btn btn-secondary"
+                                    onClick={() => setShowQRCode(false)}
+                                    style={{ marginTop: '15px', width: '100%' }}
+                                >
+                                    Fechar
+                                </button>
+                            </div>
+                        </div>
+                    )}
                 </div>
             ) : (
                 <div id="appContainer" className="container" aria-hidden="false">
