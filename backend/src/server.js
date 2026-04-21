@@ -881,7 +881,22 @@ app.get('/api/loans', authenticateToken, async (req, res) => {
         if (!Array.isArray(db.loans)) {
             db.loans = [];
         }
-        const loans = db.loans.filter((item) => item.userId === req.auth.id);
+        const productsById = new Map(
+            db.products
+                .filter((item) => item.userId === req.auth.id)
+                .map((item) => [String(item.id), item])
+        );
+
+        const loans = db.loans
+            .filter((item) => item.userId === req.auth.id)
+            .map((loan) => {
+                const linkedProduct = productsById.get(String(loan.productId));
+                return {
+                    ...loan,
+                    productName: String(loan.productName || linkedProduct?.nome || '').trim(),
+                    productPatrimonio: String(loan.productPatrimonio || linkedProduct?.patrimonio || '').trim()
+                };
+            });
         res.json(loans);
     } catch (error) {
         sendError(res, error);
@@ -917,6 +932,7 @@ app.post('/api/products/:id/loans', authenticateToken, async (req, res) => {
             userId: req.auth.id,
             productId,
             productName: product.nome,
+            productPatrimonio: String(product.patrimonio || '').trim(),
             sector,
             quantity: parseNumber(quantity, 1),
             reason: String(reason || '').trim(),
@@ -942,12 +958,12 @@ app.post('/api/products/:id/loans', authenticateToken, async (req, res) => {
 
 app.put('/api/loans/:id/return', authenticateToken, async (req, res) => {
     try {
-        const loanId = Number(req.params.id);
+        const loanId = String(req.params.id || '').trim();
         const db = await readDb();
         if (!Array.isArray(db.loans)) {
             db.loans = [];
         }
-        const loan = db.loans.find((item) => item.id === loanId && item.userId === req.auth.id);
+        const loan = db.loans.find((item) => String(item.id) === loanId && item.userId === req.auth.id);
 
         if (!loan) {
             throw buildError('Empréstimo não encontrado.', 404);
@@ -957,7 +973,7 @@ app.put('/api/loans/:id/return', authenticateToken, async (req, res) => {
             throw buildError('Este empréstimo já foi devolvido.', 400);
         }
 
-        const product = db.products.find((item) => item.id === loan.productId && item.userId === req.auth.id);
+        const product = db.products.find((item) => String(item.id) === String(loan.productId) && item.userId === req.auth.id);
 
         if (product) {
             const quantity = parseNumber(loan.quantity, 0);
@@ -979,12 +995,12 @@ app.put('/api/loans/:id/return', authenticateToken, async (req, res) => {
 
 app.delete('/api/loans/:id', authenticateToken, async (req, res) => {
     try {
-        const loanId = Number(req.params.id);
+        const loanId = String(req.params.id || '').trim();
         const db = await readDb();
         if (!Array.isArray(db.loans)) {
             db.loans = [];
         }
-        const loanIndex = db.loans.findIndex((item) => item.id === loanId && item.userId === req.auth.id);
+        const loanIndex = db.loans.findIndex((item) => String(item.id) === loanId && item.userId === req.auth.id);
 
         if (loanIndex < 0) {
             throw buildError('Empréstimo não encontrado.', 404);
@@ -994,7 +1010,7 @@ app.delete('/api/loans/:id', authenticateToken, async (req, res) => {
         let updatedProduct = null;
 
         if (!loan.returnedAt) {
-            const product = db.products.find((item) => item.id === loan.productId && item.userId === req.auth.id);
+            const product = db.products.find((item) => String(item.id) === String(loan.productId) && item.userId === req.auth.id);
 
             if (product) {
                 const quantity = parseNumber(loan.quantity, 0);

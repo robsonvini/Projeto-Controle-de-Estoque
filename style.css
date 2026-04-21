@@ -2857,6 +2857,10 @@ textarea {
     font-weight: 700;
     font-size: 0.95em;
     transition: all 0.2s ease;
+    min-width: auto;
+    display: flex;
+    align-items: center;
+    gap: 6px;
 }
 
 /* Loans section styles */
@@ -2943,16 +2947,22 @@ textarea {
 
 .loans-table th {
     padding: 12px 16px;
-    text-align: left;
+    text-align: center;
     font-weight: 600;
     color: var(--text-dark);
     border-bottom: 2px solid var(--border-color);
     white-space: nowrap;
+    vertical-align: middle;
 }
 
 .loans-table td {
     padding: 12px 16px;
     border-bottom: 1px solid var(--border-color);
+    color: #0f172a;
+    white-space: nowrap;
+    text-align: center;
+    vertical-align: middle;
+    display: table-cell;
 }
 
 .loans-table tbody tr:hover {
@@ -3056,11 +3066,6 @@ textarea {
     .loan-actions {
         flex-direction: column;
     }
-}
-    min-width: auto;
-    display: flex;
-    align-items: center;
-    gap: 6px;
 }
 
 .nav-arrow:hover:not(:disabled) {

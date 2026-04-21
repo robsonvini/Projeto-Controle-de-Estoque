@@ -6,14 +6,16 @@ const DB_PATH = path.resolve(__dirname, '../data/db.json');
 const EMPTY_DB = {
     users: [],
     products: [],
-    movements: []
+    movements: [],
+    loans: []
 };
 
 function normalizeDbShape(db) {
     return {
         users: Array.isArray(db?.users) ? db.users : [],
         products: Array.isArray(db?.products) ? db.products : [],
-        movements: Array.isArray(db?.movements) ? db.movements : []
+        movements: Array.isArray(db?.movements) ? db.movements : [],
+        loans: Array.isArray(db?.loans) ? db.loans : []
     };
 }
 

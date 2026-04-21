@@ -1188,7 +1188,7 @@ function App() {
         quantity: 1,
         reason: ''
     });
-    const [loanFilter, setLoanFilter] = useState({ productId: '', sector: '', status: 'active', order: 'recent' });
+    const [loanFilter, setLoanFilter] = useState({ productId: '', sector: '', status: 'all', order: 'recent' });
     const [profilePhotoConfig, setProfilePhotoConfig] = useState(() => ({ ...DEFAULT_PROFILE_PHOTO_CONFIG }));
     const [profilePhotoDraft, setProfilePhotoDraft] = useState(() => ({ ...DEFAULT_PROFILE_PHOTO_CONFIG }));
     const [showProfilePhotoModal, setShowProfilePhotoModal] = useState(false);
@@ -1793,7 +1793,8 @@ function App() {
         }
 
         if (loanFilter.sector) {
-            list = list.filter((item) => item.sector === loanFilter.sector);
+            const sectorFilter = String(loanFilter.sector || '').trim().toLowerCase();
+            list = list.filter((item) => String(item.sector || '').trim().toLowerCase().includes(sectorFilter));
         }
 
         if (loanFilter.status && loanFilter.status !== 'all') {
@@ -2070,6 +2071,7 @@ function App() {
         setSession(null);
         setProducts([]);
         setMovements([]);
+        setLoans([]);
         setActiveView('inventory');
         setShowExportMenu(false);
         setShowNotificationMenu(false);
@@ -3598,16 +3600,19 @@ function App() {
 
                                         <div className="form-group">
                                             <label htmlFor="loanFilterSector">Setor</label>
-                                            <select
+                                            <input
                                                 id="loanFilterSector"
+                                                type="text"
+                                                list="loanFilterSectorSuggestions"
+                                                placeholder="Filtrar por setor"
                                                 value={loanFilter.sector}
                                                 onChange={(event) => setLoanFilter((current) => ({ ...current, sector: event.target.value }))}
-                                            >
-                                                <option value="">Todos os setores</option>
+                                            />
+                                            <datalist id="loanFilterSectorSuggestions">
                                                 {SECTORS.map((sector) => (
-                                                    <option value={sector} key={`loan_sector_${sector}`}>{sector}</option>
+                                                    <option value={sector} key={`loan_sector_${sector}`} />
                                                 ))}
-                                            </select>
+                                            </datalist>
                                         </div>
 
                                         <div className="form-group">
@@ -3639,7 +3644,7 @@ function App() {
                                             <button
                                                 type="button"
                                                 className="btn btn-secondary"
-                                                onClick={() => setLoanFilter({ productId: '', sector: '', status: 'active', order: 'recent' })}
+                                                onClick={() => setLoanFilter({ productId: '', sector: '', status: 'all', order: 'recent' })}
                                             >
                                                 Limpar filtros
                                             </button>
@@ -3673,11 +3678,24 @@ function App() {
                                                 ) : null}
                                                 {filteredLoans.map((loan) => {
                                                     const product = products.find(p => String(p.id) === String(loan.productId));
+                                                    const loanProductName = String(
+                                                        product?.nome
+                                                        || loan.productName
+                                                        || loan.nomeProduto
+                                                        || loan.product
+                                                        || ''
+                                                    ).trim();
+                                                    const loanPatrimonio = String(
+                                                        product?.patrimonio
+                                                        || loan.productPatrimonio
+                                                        || loan.patrimonio
+                                                        || ''
+                                                    ).trim();
                                                     return (
                                                         <tr key={loan.id}>
                                                             <td>{formatDate(loan.createdAt)}</td>
-                                                            <td>{product?.nome || loan.productName || '-'}</td>
-                                                            <td>{product?.patrimonio || '-'}</td>
+                                                            <td>{loanProductName || `Produto #${loan.productId}`}</td>
+                                                            <td>{loanPatrimonio || '-'}</td>
                                                             <td>{loan.sector}</td>
                                                             <td>{loan.quantity}</td>
                                                             <td>{loan.reason || '-'}</td>

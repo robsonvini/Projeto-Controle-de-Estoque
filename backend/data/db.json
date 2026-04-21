@@ -16,13 +16,13 @@
       "nome": "SSD Kingston",
       "patrimonio": "",
       "categoria": "Armazenamento",
-      "quantidade": 10,
+      "quantidade": 7,
       "preco": 500,
       "descricao": "SSD Sata: 480GB",
       "dataCriacao": "20/04/2026",
-      "dataAtualizacao": "20/04/2026",
+      "dataAtualizacao": "21/04/2026",
       "createdAt": "2026-04-20T18:17:14.832Z",
-      "updatedAt": "2026-04-21T02:29:57.133Z"
+      "updatedAt": "2026-04-21T17:06:03.593Z"
     },
     {
       "id": 1776640439990,
@@ -268,5 +268,18 @@
       "createdAt": "2026-04-12T01:49:15.773Z"
     }
   ],
-  "loans": []
+  "loans": [
+    {
+      "id": "2026-04-21T17:04:25.777Z",
+      "userId": 1775675197663,
+      "productId": 1776709034847,
+      "productName": "SSD Kingston",
+      "productPatrimonio": "",
+      "sector": "Desenvolvimento Econômico",
+      "quantity": 1,
+      "reason": "Reposição temporária",
+      "createdAt": "2026-04-21T17:04:25.777Z",
+      "returnedAt": "2026-04-21T17:06:03.593Z"
+    }
+  ]
 }
